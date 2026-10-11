@@ -295,7 +295,15 @@
       item.lexicalRank = lexicalRank;
       item.curriculumRank = curriculumRank || null;
     }
-    return scored.sort((a,b) => b.exactTier-a.exactTier || b.rrfScore-a.rrfScore ||
+    const maxLexicalScore = Math.max(1, ...scored.map(item => Math.max(0, item.score)));
+    const maxRrfScore = Math.max(1e-9, ...scored.map(item => Math.max(0, item.rrfScore || 0)));
+    for (const item of scored) {
+      // Normalize the independent score scales before fusion so curriculum popularity cannot
+      // displace a strongly matching lexical/technical result.
+      item.fusedScore = 0.85 * (Math.max(0, item.score) / maxLexicalScore) +
+        0.15 * (Math.max(0, item.rrfScore || 0) / maxRrfScore);
+    }
+    return scored.sort((a,b) => b.exactTier-a.exactTier || b.fusedScore-a.fusedScore ||
       b.score-a.score || b.coverage-a.coverage || a._doc.i-b._doc.i)
       .slice(0,limit).map(({ _doc, ...item }) => item);
   }

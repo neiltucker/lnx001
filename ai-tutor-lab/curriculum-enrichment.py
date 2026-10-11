@@ -433,6 +433,57 @@ def attach_curriculum_links(concepts, course_objectives, module_objectives, modu
         item["module_objective_ids"] = related_mod_obj_ids
         item["course_objective_ids"] = list(dict.fromkeys(coid for moid in related_mod_obj_ids for coid in module_objective_to_course.get(moid, [])))
         item["relevance_confidence"] = round(max([score for score, _ in ranked[:1]] or [0.0]), 3)
+        # If the assessment is course-wide and its wording contains an exact technical literal
+        # (for example /etc/passwd), link it through matching instructional records rather than
+        # leaving it as an orphan or guessing a topic from the question alone.
+        if not (item.get("course_objective_ids") or item.get("module_objective_ids") or item.get("module_topic_ids") or item.get("lesson_topic_ids")):
+            literals = list(dict.fromkeys(re.findall(r"/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+", query)))
+            exact_candidates = []
+            for candidate in concepts:
+                ckind = str(candidate.get("record_type") or candidate.get("knowledge_source_type") or "")
+                if ckind in {"assessment_answer", "assessment_question", "learner_quiz_answer"}:
+                    continue
+                ctext = " ".join(str(candidate.get(k, "")) for k in ("title", "section_title", "lesson_title", "module_title", "direct_answer", "citation"))
+                hits = [literal for literal in literals if re.search(re.escape(literal), ctext, re.I)]
+                if not hits:
+                    continue
+                closeness = similarity(query, ctext[:1800])
+                score = 0.68 * len(hits) / max(1, len(literals)) + 0.32 * closeness
+                exact_candidates.append((score, candidate))
+            exact_candidates.sort(key=lambda pair: pair[0], reverse=True)
+            for exact_score, candidate in exact_candidates[:8]:
+                node_ids = list(dict.fromkeys((candidate.get("curriculum_node_ids") or []) +
+                    (candidate.get("module_topic_ids") or []) + (candidate.get("lesson_topic_ids") or []) +
+                    (candidate.get("module_objective_ids") or []) + (candidate.get("course_objective_ids") or [])))
+                linked_nodes = [node_by_id[x] for x in node_ids if x in node_by_id]
+                cmod = candidate.get("module_number")
+                if not linked_nodes and cmod is not None:
+                    local_topics = topics_by_module.get(cmod, [])
+                    ctext = " ".join(str(candidate.get(k, "")) for k in ("title", "section_title", "lesson_title", "direct_answer"))
+                    topic_rank = sorted(((similarity(query + " " + ctext[:1000], t["title"] + " " + t["statement"]), t) for t in local_topics),
+                                        key=lambda pair: pair[0], reverse=True)
+                    linked_nodes = [t for score, t in topic_rank[:2] if score >= 0.075]
+                if linked_nodes:
+                    item["curriculum_link_method"] = "exact_technical_literal_context"
+                    item["curriculum_linked_via_record_id"] = candidate.get("id")
+                    for node in linked_nodes:
+                        if node["node_type"] == "lesson_topic":
+                            item["lesson_topic_ids"].append(node["id"])
+                        elif node["node_type"] == "module_topic":
+                            item["module_topic_ids"].append(node["id"])
+                        elif node["node_type"] == "module_objective":
+                            related_mod_obj_ids.append(node["id"])
+                        elif node["node_type"] == "course_objective":
+                            item["course_objective_ids"].append(node["id"])
+                        for moid in node.get("related_module_objective_ids", []):
+                            related_mod_obj_ids.append(moid)
+                    item["lesson_topic_ids"] = list(dict.fromkeys(item["lesson_topic_ids"]))
+                    item["module_topic_ids"] = list(dict.fromkeys(item["module_topic_ids"]))
+                    item["module_objective_ids"] = list(dict.fromkeys(related_mod_obj_ids))
+                    item["course_objective_ids"] = list(dict.fromkeys(item["course_objective_ids"] +
+                        [coid for moid in related_mod_obj_ids for coid in module_objective_to_course.get(moid, [])]))
+                    item["relevance_confidence"] = round(max(item["relevance_confidence"], exact_score * 0.75), 3)
+                    break
     # Map each searchable record to its source/closest topic and objective context.
     text_corpus = []
     for c in concepts:
@@ -916,7 +967,7 @@ def main():
         {"id":"D2","objective":"All substantive learner-facing HTML blocks are searchable or demonstrably covered by an existing record","status":"PASS" if (len(html_source_names) and page_blocks_covered >= page_blocks_eligible) else "REVIEW","measured":coverage["course_html_block_coverage"]},
         {"id":"D3","objective":"All instructional SCORM images have reviewed textual content beyond filename-only indexing","status":"PASS" if image_added == len(image_rows) == len(image_metadata["images"]) else "FAIL","measured":coverage["image_transcriptions"]},
         {"id":"D4","objective":"Course objectives, module objectives, module topics, and lesson topics are extracted and represented as linked nodes; lesson-objective availability is explicitly audited","status":"PASS" if len(course_obj)==5 and len(module_obj)>=10 and len(module_topics)>0 and len(lesson_topics)>0 else "REVIEW","measured":coverage["curriculum_counts"]},
-        {"id":"D5","objective":"Pre/post assessment and learner quiz questions, choices, correct answer and rationale are structured without promoting distractors to evidence","status":"PASS" if len(assessment_items)==48 and coverage["assessment_counts"]["items_with_choices"]==48 and coverage["assessment_counts"]["choices_with_correctness_labels"]==coverage["assessment_counts"]["choices_total"] else "REVIEW","measured":coverage["assessment_counts"]},
+        {"id":"D5","objective":"All pre/post assessment and learner quiz questions, choices, correct answers and rationales are structured and linked without promoting distractors to evidence","status":"PASS" if coverage["assessment_counts"]["pre_assessment_questions"]==10 and coverage["assessment_counts"]["post_assessment_questions"]==20 and coverage["assessment_counts"]["module_quiz_questions"]>=18 and coverage["assessment_counts"]["items_with_correct_answer"]==coverage["assessment_counts"]["total_items"] and coverage["assessment_counts"]["items_with_choices"]==coverage["assessment_counts"]["total_items"] and coverage["assessment_counts"]["choices_with_correctness_labels"]==coverage["assessment_counts"]["choices_total"] and coverage["assessment_counts"]["items_linked_to_objectives_or_topics"]==coverage["assessment_counts"]["total_items"] else "REVIEW","measured":coverage["assessment_counts"]},
         {"id":"D6","objective":"Search records carry source provenance, topic/objective links, and explicit importance metadata","status":"PASS" if c_importance==len(concepts) and coverage["record_link_counts"]["curriculum_link_rate"]>=0.80 else "REVIEW","measured":coverage["record_link_counts"]},
         {"id":"D7","objective":"Query-time ranking can use sparse objective/topic vectors, importance and RRF without a neural model","status":"PENDING_TEST","measured":{"representation":structure["representation"],"runtime_model_count":0,"runtime_network_calls_added":False}},
         {"id":"D8","objective":"Candidate SCORM is valid and the original SCORM source hash is unchanged","status":"PASS" if CANDIDATE_V2.exists() and hashlib.sha256(PACKAGE.read_bytes()).hexdigest()==source_hash else "FAIL","measured":{"candidate_bytes":CANDIDATE_V2.stat().st_size,"source_sha256":source_hash,"source_package_unchanged":True}}
