@@ -379,6 +379,10 @@
     const exact = (best.query_anchors || []).some(a => normalize(a) === qnorm);
     const preparedAnswer = /^\s*Correct answer:/i.test(bestAnswer);
     const wantsDirectoryPermission = /\b(?:permission|permissions|privilege)\b/i.test(qnorm) && /\b(?:directory|cd|traversal|search)\b/i.test(qnorm);
+    const wantsStorageWorkflow = /\b(?:disk|storage)\b/i.test(qnorm) &&
+      /\b(?:partition|partitioned)\b/i.test(qnorm) &&
+      /\b(?:ext4|format|filesystem)\b/i.test(qnorm) &&
+      /\b(?:sequence|steps|workflow|identify|follow)\b/i.test(qnorm);
     const wantsDiagramPipes = /\b(?:diagram|figure|illustration)\b/i.test(qnorm) && /\bstderr\b/i.test(qnorm) && /\bappended?\b/i.test(qnorm);
     const wantsDiagramNetplanExample = /\b(?:diagram|figure|illustration)\b/i.test(qnorm) && /\bnetplan\b/i.test(qnorm) &&
       /\b(?:example|appear|shown|pictured)\b/i.test(qnorm) && /\b(?:ip|interface|address)\b/i.test(qnorm);
@@ -405,7 +409,10 @@
 
     let response;
     let evidenceRecord = best;
-    if (wantsDiagramPipes) {
+    if (wantsStorageWorkflow) {
+      evidenceRecord = findVisualEvidence(raw => /\blsblk\b/i.test(raw) && /\bfdisk\b/i.test(raw) && /mkfs\.ext4/i.test(raw));
+      response = "1. Run lsblk to identify the new disk; the diagram's example device is /dev/sdb. 2. Create a partition with sudo fdisk /dev/sdb; the example partition is /dev/sdb1. 3. Create an ext4 filesystem with sudo mkfs.ext4 /dev/sdb1. Verify the actual device name before running these commands; the diagram's device names and sizes are illustrative.";
+    } else if (wantsDiagramPipes) {
       evidenceRecord = findVisualEvidence(raw => /errors\.log/i.test(raw) && /incident_report\.txt/i.test(raw) && /2\s*>/i.test(raw) && />>/i.test(raw));
       response = "In the diagram, standard error (file descriptor 2) is redirected to errors.log with 2>. The filtered output from grep is appended to incident_report.txt with >>, preserving earlier contents.";
     } else if (wantsDiagramNetplanExample) {
