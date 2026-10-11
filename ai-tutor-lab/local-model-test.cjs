@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const {performance}=require('node:perf_hooks');
-const Rag=require('./ai-tutor-lab/local-model-rag.js');
+const Rag=require('./local-model-rag.js');
 const cache=path.join(process.cwd(),'ai-tutor-lab','model-cache'),work='/tmp/lnx001-ai-tutor-lab';
 function loadBundle(){
  const src=fs.readFileSync(path.join(work,'candidate','tutor-data.js'),'utf8'),w={};
