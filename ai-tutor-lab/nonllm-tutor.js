@@ -70,11 +70,11 @@
     const exactPhrases = [...raw.matchAll(/"([^"]{2,180})"/g)].map(m => normalize(m[1])).filter(Boolean);
     const literals = [];
     const patterns = [
-      /\\/(?:[A-Za-z0-9_.-]+\\/)*[A-Za-z0-9_.-]+/g,
-      /\\b[A-Za-z][A-Za-z0-9_.-]*\\.(?:conf|yaml|yml|json|ini|service|log)\\b/ig,
-      /\\b[A-Z][A-Z0-9_]{1,}(?:-[A-Z0-9]+)*\\b/g,
-      /\\bPermitRootLogin\\s+no\\b/ig,
-      /\\b\\d{1,3}(?:\\.\\d{1,3}){3}(?:\\/\\d{1,2})?\\b/g
+      /\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+/g,
+      /\b[A-Za-z][A-Za-z0-9_.-]*\.(?:conf|yaml|yml|json|ini|service|log)\b/ig,
+      /\b[A-Z][A-Z0-9_]{1,}(?:-[A-Z0-9]+)*\b/g,
+      /\bPermitRootLogin\s+no\b/ig,
+      /\b\d{1,3}(?:\.\d{1,3}){3}(?:\/\d{1,2})?\b/g
     ];
     for (const pattern of patterns) for (const match of raw.matchAll(pattern)) literals.push(normalize(match[0]));
     const uniqueLiterals = [...new Set(literals.filter(Boolean))];

@@ -39,7 +39,10 @@ jobs:
       - name: Install PDF text extractor for supplementary-source audit
         run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
       - name: Validate experiment scripts
-        run: python -m py_compile ai-tutor-lab/nonllm-experiment.py ai-tutor-lab/curriculum-enrichment.py
+        run: |
+          python -m py_compile ai-tutor-lab/nonllm-experiment.py ai-tutor-lab/curriculum-enrichment.py
+          node --check ai-tutor-lab/nonllm-tutor.js
+          node --check ai-tutor-lab/nonllm-test.cjs
       - name: Build first-stage model-free SCORM candidate
         run: python ai-tutor-lab/nonllm-experiment.py
       - name: Enrich course content and build curriculum graph candidate
