@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LNX-001 Algorithmic AI Tutor — No LLM</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body { max-width: 920px; margin: 0 auto; padding: 24px; color: #17202a; background: #f6f8fa; }
+    main { background: #fff; border: 1px solid #d8dee4; border-radius: 14px; padding: 24px; }
+    h1 { font-size: 1.5rem; margin-top: 0; }
+    .notice { background: #f6f8fa; border-left: 4px solid #64748b; padding: 10px 14px; color: #374151; }
+    label { display: block; font-weight: 650; margin: 18px 0 6px; }
+    textarea { box-sizing: border-box; width: 100%; min-height: 90px; padding: 12px; border: 1px solid #9ca3af; border-radius: 8px; font: inherit; }
+    button { margin-top: 10px; border: 0; border-radius: 8px; padding: 11px 17px; background: #1f2937; color: white; font: inherit; cursor: pointer; }
+    button:focus, textarea:focus { outline: 3px solid #93c5fd; outline-offset: 2px; }
+    .samples { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .samples button { background: #e5e7eb; color: #111827; margin: 0; }
+    #result { margin-top: 22px; border-top: 1px solid #d8dee4; padding-top: 18px; }
+    #answer { white-space: pre-wrap; }
+    .meta, .muted { color: #5b6573; font-size: .9rem; }
+    li { margin: 5px 0; overflow-wrap: anywhere; }
+    .status { padding: 8px 10px; border-radius: 6px; background: #eff6ff; color: #1e3a8a; }
+    code { overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>LNX-001 Algorithmic AI Tutor — No LLM</h1>
+  <p class="notice">Experimental prototype. It uses JavaScript retrieval algorithms, course-specific aliases, question-intent rules, sentence selection, and deterministic answer templates. No LLM, embedding model, WebAssembly, backend, or runtime network call is used.</p>
+  <p id="load-status" class="status" role="status">Loading the course knowledge index…</p>
+  <form id="question-form">
+    <label for="question">Ask a course question</label>
+    <textarea id="question" required placeholder="For example: What should I allow before enabling UFW over SSH?"></textarea>
+    <button type="submit">Generate answer</button>
+  </form>
+  <div class="samples" aria-label="Sample questions">
+    <button type="button" data-question="What does execute permission on a Linux directory allow a user to do?">Directory permissions</button>
+    <button type="button" data-question="Which exact SSH configuration file and directive disable direct root login?">SSH root login</button>
+    <button type="button" data-question="What should I do before enabling UFW on a remote SSH server?">UFW and SSH</button>
+    <button type="button" data-question="How do I append new log records without deleting old ones?">Append to a log</button>
+  </div>
+  <section id="result" hidden aria-live="polite">
+    <p id="answer-meta" class="meta"></p>
+    <h2>Generated response</h2>
+    <p id="answer"></p>
+    <h3>Course evidence</h3>
+    <ol id="sources"></ol>
+    <details>
+      <summary>Retrieval diagnostics</summary>
+      <pre id="diagnostics"></pre>
+    </details>
+  </section>
+</main>
+<script src="tutor-data.js"></script>
+<script src="nonllm-tutor.js"></script>
+<script>
+(function () {
+  "use strict";
+  const status = document.getElementById("load-status");
+  const form = document.getElementById("question-form");
+  const questionBox = document.getElementById("question");
+  const result = document.getElementById("result");
+  let index = null;
+  try {
+    const bundle = window.__CS_AI_TUTOR_DATA__;
+    if (!bundle || !Array.isArray(bundle.concepts)) throw new Error("Course index is missing.");
+    if (!window.CSNonLLMTutor) throw new Error("Algorithmic tutor script did not load.");
+    index = window.CSNonLLMTutor.createIndex(bundle.concepts, bundle.non_llm_generation_rules || {});
+    status.textContent = "Ready. Indexed " + index.recordCount + " course knowledge records. No model was loaded.";
+  } catch (e) {
+    status.textContent = "Could not initialize the demo: " + String(e && e.message || e);
+    status.style.background = "#fef2f2";
+    status.style.color = "#991b1b";
+    form.querySelector("button[type=submit]").disabled = true;
+  }
+  function ask(question) {
+    if (!index) return;
+    const response = window.CSNonLLMTutor.answer(question, index);
+    result.hidden = false;
+    document.getElementById("answer-meta").textContent =
+      "Intent: " + response.intent + " | Confidence proxy: " + Number(response.score || 0).toFixed(2) +
+      " | Result: " + response.category;
+    document.getElementById("answer").textContent = response.answer || "";
+    const list = document.getElementById("sources");
+    list.textContent = "";
+    (response.sources || []).forEach(function (source) {
+      const li = document.createElement("li");
+      li.textContent = source;
+      list.appendChild(li);
+    });
+    document.getElementById("diagnostics").textContent = JSON.stringify({
+      category: response.category,
+      intent: response.intent,
+      score: response.score,
+      coverage: response.coverage,
+      selectedConcept: response.concept && (response.concept.title || response.concept.section_title),
+      ranked: response.ranked
+    }, null, 2);
+  }
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    ask(questionBox.value.trim());
+  });
+  document.querySelectorAll("[data-question]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      questionBox.value = button.getAttribute("data-question");
+      ask(questionBox.value);
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -12,3 +12,12 @@ All validation remains in GitHub Actions and all candidate SCORM packages are wo
 ## Offline small-model evaluations
 
 See [`docs/AI_TUTOR_SMALL_MODEL_TESTS.md`](../docs/AI_TUTOR_SMALL_MODEL_TESTS.md) for the validated SmolLM2-135M result and ordered model sequence. Results from GitHub Actions, not local testing, determine acceptance. The 135M pure-JavaScript CPU configuration failed all 3 technical fact checks and took 45.7–74.1 seconds per response.
+
+
+## Algorithmic no-LLM experiment
+
+The isolated experiment in `nonllm-experiment.py` evaluates a model-free alternative that uses weighted lexical/BM25-style ranking, exact technical-term matching, course-specific aliases, question anchors from the pre/post answer keys and learner-visible module quizzes, sentence selection, and deterministic natural-language answer templates.
+
+The build source policy remains restricted to learner-facing SCORM HTML, Quick Reference Guide HTML, and pre/post instructor answer-key Q&A from the Trainer Preparation Guide. Learner-facing quiz questions improve query matching; quiz choices are not treated as facts unless the source explicitly identifies a correct answer or feedback. The candidate adds a standalone in-package demo page without replacing the primary tutor UI.
+
+Results and the candidate package are produced as a GitHub Actions artifact named `lnx001-ai-tutor-nonllm-algorithmic-v1`. No model files, WebAssembly, hosted inference, or runtime network requests are added. The original SCORM ZIP and Courseware Studio production assets remain unchanged.
