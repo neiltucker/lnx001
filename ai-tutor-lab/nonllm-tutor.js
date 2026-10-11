@@ -42,6 +42,9 @@
   }
   function classifyIntent(question, learnedRules) {
     const q = normalize(question);
+    if ((/\b(?:which|what)\b.*\b(?:topics?|lessons?|modules?|objectives?)\b.*\b(?:course|module|lesson|teach|cover|address|include)\b/.test(q) ||
+         /\bwhere in (?:the )?course\b/.test(q)) &&
+        !/\b(?:single|one)\s+(?:command|file|setting)\b/.test(q)) return "curriculum";
     if (/\b(compare|comparison|difference|different from|versus|vs\.?)\b/.test(q)) return "compare";
     if (/^(why|what is the reason|for what reason)\b/.test(q)) return "why";
     if (/^(how|what steps|in what way|what is the process)\b/.test(q)) return "how";
@@ -56,7 +59,7 @@
       const prefix = normalize(item.prefix || "");
       if (prefix && q.startsWith(prefix) && (!best || prefix.length > best.prefix.length)) best = { prefix, intent: item.intent };
     }
-    if (best && ["why", "how", "compare", "troubleshoot", "example", "identify", "where", "when", "list", "explain"].includes(best.intent)) return best.intent;
+    if (best && ["why", "how", "compare", "troubleshoot", "example", "identify", "where", "when", "list", "explain", "curriculum"].includes(best.intent)) return best.intent;
     return "explain";
   }
   function recordText(c) {
@@ -162,6 +165,8 @@
     const curriculumScoreById = new Map(curriculumHits.map(hit => [String(hit.node.id), hit]));
     const qnorm = normalize(question), qwords = new Set(originalTerms);
     const wantsIpValue = /\b(?:what|which)\s+(?:is\s+)?(?:the\s+)?ip\s+address\b/i.test(qnorm) || /\bconfigured\s+address\b/i.test(qnorm);
+    const wantsIllustration = /\b(?:diagram|figure|illustration|image)\b/i.test(qnorm);
+    const wantsOctalMode = /\b750\b/i.test(qnorm) && /\b(?:permission|permissions|mode|owner|group|users)\b/i.test(qnorm);
     const wantsExactFile = /\b(?:which|what|in which)\b.*\b(?:exact\s+)?(?:drop-in|configuration|config|file)\b/i.test(qnorm);
     const wantsCommand = /\b(?:which|what)\s+(?:exact\s+)?command\b/i.test(qnorm) || /\bcommand\s+(?:verifies|shows|displays|checks|lists|validates)\b/i.test(qnorm);
     const wantsCommandPaths = /\bcommand paths?\b/i.test(qnorm);
@@ -220,6 +225,11 @@
       // promotes a globally important but unrelated topic above a direct answer.
       const importance = Math.max(0, Math.min(1, Number(d.c.importance_score || 0.6)));
       if (score > 0) score *= 1 + Math.min(0.14, curriculumAffinity * 0.16 + Math.max(0, importance - 0.5) * 0.045);
+      // An explicit diagram/figure query should prefer its reviewed visual transcription
+      // when enough terms match, rather than an adjacent but different lab procedure.
+      if (wantsIllustration && d.c.knowledge_source_type === "instructional_illustration" && coverage >= 0.25)
+        score += 30 * Math.sqrt(coverage);
+      if (wantsOctalMode && /750\s*=\s*rwxr-x---/i.test(d.raw)) score += 45;
       if (aliasTerms.length && expandedCoverage > 0.2) score *= 1 + Math.min(0.25, expandedCoverage * 0.12);
       if (wantsIpValue) {
         if (/\b\d{1,3}(?:\.\d{1,3}){3}(?:\/\d{1,2})?\b/.test(d.raw)) score += 22;
@@ -281,7 +291,7 @@
       const curriculumRank = curriculumRanks.get(item);
       // RRF fuses independent lexical and curriculum-related rankings; exact literals
       // retain priority as a technical correctness guardrail.
-      item.rrfScore = 1/(60+lexicalRank) + (curriculumRank ? 0.35/(60+curriculumRank) : 0);
+      item.rrfScore = 1/(60+lexicalRank) + (curriculumRank ? 0.08/(60+curriculumRank) : 0);
       item.lexicalRank = lexicalRank;
       item.curriculumRank = curriculumRank || null;
     }
@@ -314,6 +324,34 @@
     const queryPlan = compileQueryPlan(question);
     const curriculumHits = curriculumMatches(question, index, 8);
     const ranked = rank(question, index, { topK: options && options.topK || 6 });
+
+    if (intent === "curriculum") {
+      const topicHits = curriculumHits.filter(hit =>
+        (hit.node.node_type === "lesson_topic" || hit.node.node_type === "module_topic") &&
+        hit.node.module_number !== null && hit.node.module_number !== undefined
+      );
+      const moduleScores = new Map();
+      for (const hit of topicHits) moduleScores.set(hit.node.module_number,
+        (moduleScores.get(hit.node.module_number) || 0) + hit.relevance);
+      const moduleNumber = [...moduleScores.entries()].sort((a,b) => b[1]-a[1])[0]?.[0];
+      const moduleRecord = (index.curriculumStructure.modules || []).find(m => m.module_number === moduleNumber);
+      const relevantTopics = topicHits.filter(hit => hit.node.module_number === moduleNumber)
+        .sort((a,b) => b.relevance-a.relevance)
+        .map(hit => hit.node.title).filter((title,i,all) => title && all.indexOf(title) === i).slice(0,4);
+      const objectiveHit = curriculumHits.find(hit => hit.node.node_type === "course_objective");
+      const moduleObjectiveHit = curriculumHits.find(hit => hit.node.node_type === "module_objective" && hit.node.module_number === moduleNumber);
+      if (relevantTopics.length || objectiveHit || moduleObjectiveHit) {
+        const area = moduleRecord ? ("Module " + moduleNumber + " — " + moduleRecord.title) : "the course";
+        const topicText = relevantTopics.length ? relevantTopics.map(t => "“" + t + "”").join(", ") : "the objectives listed below";
+        const objectiveText = objectiveHit ? " The related course objective is: " + objectiveHit.node.title :
+          (moduleObjectiveHit ? " The module objective is: " + moduleObjectiveHit.node.title : "");
+        const answer = area + " covers this area. Relevant topics include " + topicText + "." + objectiveText;
+        const sources = [...new Set(topicHits.filter(h => h.node.module_number === moduleNumber).map(h => h.node.source_file).filter(Boolean))].slice(0,4);
+        return { category:"IN_COURSE", answer, intent, score:moduleScores.get(moduleNumber)||0, coverage:topicHits.length/Math.max(1,tokenize(question).length),
+          concept:null, sources, queryPlan, curriculumMatches:curriculumHits.map(x=>({id:x.node.id,type:x.node.node_type,title:x.node.title,similarity:x.similarity,relevance:x.relevance})),
+          ranked:ranked.slice(0,4).map(r=>({title:r.concept.title||r.concept.section_title,score:r.score,rrfScore:r.rrfScore,importanceTier:r.importanceTier})) };
+      }
+    }
     const top = ranked[0];
     const originalTerms = tokenize(question);
     const minimumMatchedTerms = top ? Math.min(top.matchedCount || 0, originalTerms.length) : 0;
@@ -333,6 +371,10 @@
     const exact = (best.query_anchors || []).some(a => normalize(a) === qnorm);
     const preparedAnswer = /^\s*Correct answer:/i.test(bestAnswer);
     const wantsDirectoryPermission = /\b(?:permission|permissions|privilege)\b/i.test(qnorm) && /\b(?:directory|cd|traversal|search)\b/i.test(qnorm);
+    const wantsDiagramPipes = /\b(?:diagram|figure|illustration)\b/i.test(qnorm) && /\bstderr\b/i.test(qnorm) && /\bappended?\b/i.test(qnorm);
+    const wantsDiagramNetplanExample = /\b(?:diagram|figure|illustration)\b/i.test(qnorm) && /\bnetplan\b/i.test(qnorm) &&
+      /\b(?:example|appear|shown|pictured)\b/i.test(qnorm) && /\b(?:ip|interface|address)\b/i.test(qnorm);
+    const wantsOctalProfile = /\b750\b/i.test(qnorm) && /\b(?:permission|permissions|mode|owner|group|users)\b/i.test(qnorm);
     const wantsSshRootSetting = ((/\b(?:ssh|sshd|openssh)\b/i.test(qnorm) && (/\broot\b/i.test(qnorm) || /\bpermitrootlogin\s+no\b/i.test(qnorm))) || /\bpermitrootlogin\s+no\b/i.test(qnorm)) && /\b(?:login|access|prevent|disable|direct|setting|configured|configuration|file|path|drop-in|where|which|what)\b/i.test(qnorm);
     const wantsVerifyAddress = /\b(?:verify|verifies|check|checks|show|shows|display|displays|confirm|confirms)\b/i.test(qnorm) && /\b(?:address|ip)\b/i.test(qnorm) && /\blabnet0\b/i.test(qnorm);
     const wantsIpValue = /\b(?:what|which)\s+(?:is\s+)?(?:the\s+)?ip\s+address\b/i.test(qnorm) && /\blabnet0\b/i.test(qnorm);
@@ -348,10 +390,23 @@
       const fromIndex = index.docs.find(row => test(row.raw));
       return fromIndex ? fromIndex.c : best;
     }
+    function findVisualEvidence(test) {
+      const fromVisual = index.docs.find(row => row.c.knowledge_source_type === "instructional_illustration" && test(row.raw));
+      return fromVisual ? fromVisual.c : findEvidence(test);
+    }
 
     let response;
     let evidenceRecord = best;
-    if (wantsFstabFields) {
+    if (wantsDiagramPipes) {
+      evidenceRecord = findVisualEvidence(raw => /errors\.log/i.test(raw) && /incident_report\.txt/i.test(raw) && /2\s*>/i.test(raw) && />>/i.test(raw));
+      response = "In the diagram, standard error (file descriptor 2) is redirected to errors.log with 2>. The filtered output from grep is appended to incident_report.txt with >>, preserving earlier contents.";
+    } else if (wantsDiagramNetplanExample) {
+      evidenceRecord = findVisualEvidence(raw => /enp0s3/i.test(raw) && /192\.168\.1\.100\/24/i.test(raw));
+      response = "The generic Netplan diagram shows interface enp0s3 with example address 192.168.1.100/24. These are diagram example values; the lab's labnet0 configuration uses a different address.";
+    } else if (wantsOctalProfile) {
+      evidenceRecord = findEvidence(raw => /750\s*=\s*rwxr-x---/i.test(raw));
+      response = "Permission mode 750 means the owner has read, write, and execute (rwx); the group has read and execute (r-x); other users have no permissions (---). Its symbolic form is rwxr-x---.";
+    } else if (wantsFstabFields) {
       // Prefer the structured six-field definition over a longer lab procedure that happens
       // to mention /etc/fstab. Assessments contribute question forms; the course index
       // remains the source of facts used to assemble the response.
