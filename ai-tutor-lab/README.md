@@ -1,11 +1,9 @@
-# LNX-001 AI Tutor Lab — Version 2
+# LNX-001 AI Tutor Lab — Version 3
 
-This experiment is isolated to branch `ai-tutor-lab/full-course-knowledge-v1`. No Courseware Studio files are changed, and the original SCORM ZIP is never overwritten.
+This lab is isolated to the `ai-tutor-lab/full-course-knowledge-v1` branch in this repository. No Courseware Studio files are changed; the original SCORM ZIP is never overwritten.
 
-Version 1 assembled a course-wide knowledge pack from readable SCORM HTML, the learner-facing Quick Reference Guide HTML, and only pre/post instructor answer-key Q&A from the Trainer Preparation Guide. The guide's Module Q&A Reference and all other instructor-only material are excluded.
+Version 1 tested adding the complete learner-facing course HTML, Quick Reference Guide HTML, and only the pre/post instructor answer-key Q&A from the Trainer Preparation Guide. Version 2 improved indexing by prioritizing exact paths, IP addresses, identifiers, and inline code, and by giving generic procedure passages more descriptive titles.
 
-Version 2 keeps the same source policy and unchanged tutor JavaScript, but improves build-time indexing by prioritizing literal technical paths, IP addresses, identifiers, and inline code; generating descriptive titles from otherwise generic procedure headings; and adding generic question anchors for address/interface and configuration-path relationships.
+Version 3 keeps those knowledge-source rules and adds one experimental change to the candidate's embedded JavaScript only: an IDF-weighted query-coverage penalty intended to discourage answers that score highly on general words but omit a distinctive query term. The original package's tutor.js is the baseline; only the candidate receives this ranking patch. No hosted inference, WebAssembly, external request, or new runtime dependency is introduced.
 
-GitHub Actions runs a fixed baseline-versus-candidate suite against the actual embedded JavaScript runtime and publishes the V2 package plus JSON/Markdown reports as an artifact. Generated packages and reports are not committed automatically.
-
-This experiment tests deterministic retrieval only. It does not provide generative multi-passage synthesis or establish Chatbase equivalence.
+The workflow compares baseline and candidate against fixed Linux course questions, publishes the new SCORM package and reports as an artifact, and does not commit generated ZIPs/reports. Review the per-question answers and any regressions before importing this candidate into a separate LMS test course.

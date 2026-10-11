@@ -8,7 +8,7 @@ ROOT=Path.cwd()
 PACKAGE=ROOT/"LNX-001_EN_SCORM2004.zip"
 GUIDE=ROOT/"LNX-001_EN_TrainerPreparationGuide.txt"
 QRG=ROOT/"Day-01-QuickReference.html"
-OUT=ROOT/"LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V2.zip"
+OUT=ROOT/"LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V3.zip"
 WORK=Path("/tmp/lnx001-ai-tutor-lab")
 STOP=set("a an the and or but if then of to in on at by for with do does did have has had is are was were be been being what which who when where why how this that these those you your my me we us our it its they them their can could would should will as from about into than so not nor too very just only also still even any some all every most more less few command commands linux system administrator administrators user users using use used uses need should must question answer explain explanation correct choice option select following".split())
 class Visible(HTMLParser):
@@ -167,6 +167,36 @@ def parse_bundle(js):
     if at<0:raise ValueError("No window.__CS_AI_TUTOR_DATA__ assignment in SCORM")
     eq=js.find("=",at+len(marker));semi=js.rfind(";")
     return json.loads(js[eq+1:semi if semi>eq else None].strip())
+def patch_lab_query_coverage(tutor_js):
+    # This controlled experiment penalizes a high-scoring answer when it omits
+    # distinctive query terms. Production code remains untouched.
+    needle="""      if (isNewSessionQuery && c.polarity === 'termination') score *= 0.1;
+      else if (isNewSessionQuery && c.polarity === 'initiation') score *= 2.5;
+
+      if (score > best.score) {"""
+    replacement="""      if (isNewSessionQuery && c.polarity === 'termination') score *= 0.1;
+      else if (isNewSessionQuery && c.polarity === 'initiation') score *= 2.5;
+
+      // LNX-001 lab V3: coverage penalty for candidates that omit query evidence.
+      // Rare terms such as a specific interface, path, or command have higher IDF.
+      var lnxQueryWeightTotal = 0;
+      var lnxQueryWeightFound = 0;
+      querySet.forEach(function (term) {
+        var lnxWeight = getIdf(term);
+        if (!(lnxWeight > 0)) lnxWeight = 1;
+        lnxQueryWeightTotal += lnxWeight;
+        if (doc.titleSet.has(term) || doc.kwSet.has(term) || doc.qaSet.has(term) || doc.bodySet.has(term)) {
+          lnxQueryWeightFound += lnxWeight;
+        }
+      });
+      var lnxQueryCoverage = lnxQueryWeightTotal > 0 ? lnxQueryWeightFound / lnxQueryWeightTotal : 1;
+      score *= Math.pow(Math.max(0.20, lnxQueryCoverage), 1.6);
+
+      if (score > best.score) {"""
+    if tutor_js.count(needle) != 1:
+        raise ValueError("Expected exactly one tutor scoring anchor for the lab coverage patch")
+    return tutor_js.replace(needle, replacement, 1)
+
 def assessment_records(guide):
     # Standardize typography in this text export before locating assessment answer-key sections.
     guide=guide.replace(chr(160)," ").replace("—","-").replace("–","-").replace("−","-").replace(chr(65533),"-")
@@ -259,14 +289,19 @@ def main():
             sources.append({"path":name,"visible_chars":visible,"title":p.title or Path(name).name})
             course_count+=add_source(raw,name,"course",added_course)
         bundle["concepts"]=concepts
-        bundle["ai_tutor_lab_experiment"]={"version":"full-course-knowledge-v2","sources":["readable SCORM HTML","Quick Reference Guide HTML","trainer guide pre/post instructor answer-key Q&A only"],"runtime":"unchanged JavaScript; no hosted inference; no network calls; no WebAssembly"}
+        bundle["ai_tutor_lab_experiment"]={"version":"full-course-knowledge-v3","sources":["readable SCORM HTML","Quick Reference Guide HTML","trainer guide pre/post instructor answer-key Q&A only"],"runtime":"lab-only query-coverage reranker; no hosted inference; no network calls; no WebAssembly"}
         newdata="window.__CS_AI_TUTOR_DATA__ = "+json.dumps(bundle,ensure_ascii=False,separators=(",",":"))+";\n"
-        for d,content in ((WORK/"baseline",data),(WORK/"candidate",newdata)):
-            (d/"tutor.js").write_text(tutor,encoding="utf-8");(d/"tutor-data.js").write_text(content,encoding="utf-8")
+        candidate_tutor=patch_lab_query_coverage(tutor)
+        for d,content,jsdata in ((WORK/"baseline",data,tutor),(WORK/"candidate",newdata,candidate_tutor)):
+            (d/"tutor.js").write_text(jsdata,encoding="utf-8");(d/"tutor-data.js").write_text(content,encoding="utf-8")
         with zipfile.ZipFile(OUT,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as zout:
-            for info in zin.infolist():zout.writestr(info,newdata.encode() if info.filename==dpath else zin.read(info.filename))
+            for info in zin.infolist():
+                if info.filename==dpath: payload=newdata.encode("utf-8")
+                elif info.filename==tpath: payload=candidate_tutor.encode("utf-8")
+                else: payload=zin.read(info.filename)
+                zout.writestr(info,payload)
         entries=[{"path":x.filename,"size":x.file_size} for x in zin.infolist()]
-    summary={"experiment":"full-course-knowledge-v2","baseline_package":PACKAGE.name,"candidate_package":OUT.name,"baseline_package_sha256":hashlib.sha256(PACKAGE.read_bytes()).hexdigest(),"baseline_package_bytes":PACKAGE.stat().st_size,"candidate_package_bytes":OUT.stat().st_size,"baseline_tutor_data_bytes":len(data.encode()),"candidate_tutor_data_bytes":len(newdata.encode()),"baseline_concept_count":base_count,"candidate_concept_count":len(concepts),"assessment_qas_parsed":{"pre":10,"post":20},"assessment_qas_added_as_new_concepts":qa_add,"existing_concepts_enriched_by_assessment_qas":qa_enrich,"quick_reference_concepts_added":qrg_count,"course_html_concepts_added":course_count,"course_html_sources":sources,"qrg_source":QRG.name,"assessment_source_policy":"Only pre/post instructor answer-key Q&A; no trainer guide module Q&A or other guide content","runtime_changed":False,"hosted_inference_added":False,"webassembly_added":False,"original_zip_modified":False,"tutor_runtime_path":tpath,"tutor_data_path":dpath,"zip_entries":entries,"added_qrg_titles":[{"title":x["title"],"citation":x["citation"]} for x in added_qrg],"added_course_titles":[{"title":x["title"],"citation":x["citation"],"module":x["module_number"]} for x in added_course],"assessment_titles":[{"assessment":x["kind"],"question_number":x["n"],"question":x["question"]} for x in qas]}
+    summary={"experiment":"full-course-knowledge-v3","baseline_package":PACKAGE.name,"candidate_package":OUT.name,"baseline_package_sha256":hashlib.sha256(PACKAGE.read_bytes()).hexdigest(),"baseline_package_bytes":PACKAGE.stat().st_size,"candidate_package_bytes":OUT.stat().st_size,"baseline_tutor_data_bytes":len(data.encode()),"candidate_tutor_data_bytes":len(newdata.encode()),"baseline_concept_count":base_count,"candidate_concept_count":len(concepts),"assessment_qas_parsed":{"pre":10,"post":20},"assessment_qas_added_as_new_concepts":qa_add,"existing_concepts_enriched_by_assessment_qas":qa_enrich,"quick_reference_concepts_added":qrg_count,"course_html_concepts_added":course_count,"course_html_sources":sources,"qrg_source":QRG.name,"assessment_source_policy":"Only pre/post instructor answer-key Q&A; no trainer guide module Q&A or other guide content","runtime_changed":True,"runtime_patch":"Lab-only IDF-weighted query-coverage penalty to discourage high-scoring answers that omit distinctive question terms","source_runtime_bytes":len(tutor.encode()),"candidate_runtime_bytes":len(candidate_tutor.encode()),"changed_package_entries":[tpath,dpath],"hosted_inference_added":False,"webassembly_added":False,"original_zip_modified":False,"tutor_runtime_path":tpath,"tutor_data_path":dpath,"zip_entries":entries,"added_qrg_titles":[{"title":x["title"],"citation":x["citation"]} for x in added_qrg],"added_course_titles":[{"title":x["title"],"citation":x["citation"],"module":x["module_number"]} for x in added_course],"assessment_titles":[{"assessment":x["kind"],"question_number":x["n"],"question":x["question"]} for x in qas]}
     Path("ai-tutor-lab/experiment-summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding="utf-8")
     print(json.dumps({k:v for k,v in summary.items() if k not in ("zip_entries","added_qrg_titles","added_course_titles","assessment_titles")},ensure_ascii=False,indent=2))
 if __name__=="__main__":
