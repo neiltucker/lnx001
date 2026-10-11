@@ -586,7 +586,7 @@ def main():
                         continue
                     if UI_ONLY.match(text):
                         p_ui += 1; continue
-                    technical_fragment = bool(re.fullmatch(r"(?:>{1,2}|d>|-[A-Za-z0-9]+|/[A-Za-z0-9_./-]+|w[+#.:-]*)", text))
+                    technical_fragment = bool(re.fullmatch(r"(?:>{1,2}|\d>|-[A-Za-z0-9]+|/[A-Za-z0-9_./-]+|\w[+#.:-]*)", text))
                     if len(norm(text)) < 3 and not technical_fragment:
                         p_ui += 1; continue
                     p_new_before = len(concepts)
@@ -708,11 +708,9 @@ def main():
         # PDF is restricted to the approved pre/post answer-key records.
         def add_plaintext_source(source_name, text_content, source_kind, module=None):
             count_new = count_dup = count_ui = 0
-            for i, para in enumerate(re.split(r"
-s*
-|", text_content or "")):
-                para = re.sub(r"s+", " ", para).strip()
-                technical_fragment = bool(re.fullmatch(r"(?:>{1,2}|d>|-[A-Za-z0-9]+|/[A-Za-z0-9_./-]+|w[+#.:-]*)", para))
+            for i, para in enumerate(re.split(r"\n\s*\n|\f", text_content or "")):
+                para = re.sub(r"\s+", " ", para).strip()
+                technical_fragment = bool(re.fullmatch(r"(?:>{1,2}|\d>|-[A-Za-z0-9]+|/[A-Za-z0-9_./-]+|\w[+#.:-]*)", para))
                 if len(norm(para)) < 3 and not technical_fragment: continue
                 known = " || ".join(norm(str(c.get(k,""))) for c in concepts for k in ("title","section_title","lesson_title","direct_answer"))
                 if norm(para) in known:
