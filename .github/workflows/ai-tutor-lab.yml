@@ -17,7 +17,7 @@ permissions:
 jobs:
   full-course-knowledge-experiment:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Check out experiment branch
         uses: actions/checkout@v4
@@ -29,18 +29,26 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Cache pinned local model assets
+        uses: actions/cache@v4
+        with:
+          path: ai-tutor-lab/model-cache
+          key: gab-100m-q8-339be056d94f5615e7764f2ce3c8e67667dcabbb
       - name: Build separate candidate SCORM package
         run: python ai-tutor-lab/build_experiment.py
       - name: Run baseline versus candidate runtime tests
         run: node ai-tutor-lab/runtime-test.cjs
+      - name: Test local JavaScript model with course retrieval
+        run: node ai-tutor-lab/local-model-test.cjs
       - name: Upload original, candidate, and reports
         uses: actions/upload-artifact@v4
         with:
-          name: lnx001-ai-tutor-full-course-knowledge-v5
+          name: lnx001-ai-tutor-local-js-generation-v1
           path: |
             LNX-001_EN_SCORM2004.zip
-            LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V5.zip
+            LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V6-LOCAL-LLM.zip
             ai-tutor-lab/experiment-summary.json
             ai-tutor-lab/runtime-comparison.json
             ai-tutor-lab/EXPERIMENT_REPORT.md
+            ai-tutor-lab/local-model-results.json
           if-no-files-found: error

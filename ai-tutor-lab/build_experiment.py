@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import hashlib, html, json, re, sys, zipfile
+import hashlib, html, json, re, sys, zipfile, urllib.request
 from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path
@@ -8,8 +8,11 @@ ROOT=Path.cwd()
 PACKAGE=ROOT/"LNX-001_EN_SCORM2004.zip"
 GUIDE=ROOT/"LNX-001_EN_TrainerPreparationGuide.txt"
 QRG=ROOT/"Day-01-QuickReference.html"
-OUT=ROOT/"LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V5.zip"
+OUT=ROOT/"LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V6-LOCAL-LLM.zip"
 WORK=Path("/tmp/lnx001-ai-tutor-lab")
+MODEL_DIR=ROOT/"ai-tutor-lab"/"model-cache"
+MODEL_COMMIT="339be056d94f5615e7764f2ce3c8e67667dcabbb"
+MODEL_FILES={"inference.js":27526,"model-q8.json":32798,"model-q8.bin":100334656,"tokenizer.json":102706,"LICENSE":1069}
 STOP=set("a an the and or but if then of to in on at by for with do does did have has had is are was were be been being what which who when where why how this that these those you your my me we us our it its they them their can could would should will as from about into than so not nor too very just only also still even any some all every most more less few command commands linux system administrator administrators user users using use used uses need should must question answer explain explanation correct choice option select following".split())
 class Visible(HTMLParser):
     skip={"script","style","noscript","svg","nav","footer","button","head","template"}
@@ -198,6 +201,32 @@ def patch_lab_query_coverage(tutor_js):
         raise ValueError("Expected exactly one tutor scoring anchor for the lab coverage patch")
     return tutor_js.replace(needle, replacement, 1)
 
+def download_model_assets():
+    MODEL_DIR.mkdir(parents=True,exist_ok=True)
+    base="https://raw.githubusercontent.com/gszauer/Gab/"+MODEL_COMMIT+"/"
+    for name,expected_size in MODEL_FILES.items():
+        destination=MODEL_DIR/name
+        if destination.exists() and destination.stat().st_size==expected_size:
+            print("Using cached pinned model asset: "+name+" ("+str(expected_size)+" bytes)")
+            continue
+        print("Downloading pinned local-model asset: "+name+" ("+str(expected_size)+" bytes)")
+        req=urllib.request.Request(base+name,headers={"User-Agent":"CoursewareStudio-LNX001-AITutor-Lab"})
+        tmp=destination.with_suffix(destination.suffix+".download")
+        with urllib.request.urlopen(req,timeout=240) as response,tmp.open("wb") as output:
+            while True:
+                chunk=response.read(1024*1024)
+                if not chunk:break
+                output.write(chunk)
+        actual=tmp.stat().st_size
+        if actual!=expected_size:
+            tmp.unlink(missing_ok=True)
+            raise ValueError("Pinned model asset size mismatch for "+name+": expected "+str(expected_size)+", got "+str(actual))
+        tmp.replace(destination)
+    manifest=json.loads((MODEL_DIR/"model-q8.json").read_text(encoding="utf-8"))
+    if manifest.get("byte_length")!=MODEL_FILES["model-q8.bin"]:
+        raise ValueError("Q8 manifest byte_length does not match downloaded weights")
+    return {name:{"bytes":(MODEL_DIR/name).stat().st_size,"sha256":hashlib.sha256((MODEL_DIR/name).read_bytes()).hexdigest()} for name in MODEL_FILES}
+
 def assessment_records(guide):
     # Standardize typography in this text export before locating assessment answer-key sections.
     guide=guide.replace(chr(160)," ").replace("—","-").replace("–","-").replace("−","-").replace(chr(65533),"-")
@@ -229,8 +258,9 @@ def assessment_records(guide):
     if counts!={"pre":10,"post":20}:raise ValueError("Expected 10 pre and 20 post Q&A, parsed "+str(counts))
     return ret
 def main():
-    for f in (PACKAGE,GUIDE,QRG):
+    for f in (PACKAGE,GUIDE,QRG,Path("ai-tutor-lab/local-model-rag.js"),Path("ai-tutor-lab/local-model-demo.html")):
         if not f.exists():raise FileNotFoundError("Required source file not found: "+str(f))
+    model_asset_info=download_model_assets()
     guide=GUIDE.read_text(encoding="utf-8",errors="replace"); qas=assessment_records(guide)
     WORK.mkdir(parents=True,exist_ok=True);(WORK/"baseline").mkdir(exist_ok=True);(WORK/"candidate").mkdir(exist_ok=True)
     with zipfile.ZipFile(PACKAGE) as zin:
@@ -290,7 +320,7 @@ def main():
             sources.append({"path":name,"visible_chars":visible,"title":p.title or Path(name).name})
             course_count+=add_source(raw,name,"course",added_course)
         bundle["concepts"]=concepts
-        bundle["ai_tutor_lab_experiment"]={"version":"full-course-knowledge-v5","sources":["readable SCORM HTML","Quick Reference Guide HTML","trainer guide pre/post instructor answer-key Q&A only"],"runtime":"lab-only query-coverage reranker; no hosted inference; no network calls; no WebAssembly"}
+        bundle["ai_tutor_lab_experiment"]={"version":"local-js-generation-poc-v1","sources":["readable SCORM HTML","Quick Reference Guide HTML","trainer guide pre/post instructor answer-key Q&A only"],"runtime":"lab-only query-coverage reranker; no hosted inference; no network calls; no WebAssembly"}
         newdata="window.__CS_AI_TUTOR_DATA__ = "+json.dumps(bundle,ensure_ascii=False,separators=(",",":"))+";\n"
         candidate_tutor=patch_lab_query_coverage(tutor)
         for d,content,jsdata in ((WORK/"baseline",data,tutor),(WORK/"candidate",newdata,candidate_tutor)):
@@ -301,8 +331,15 @@ def main():
                 elif info.filename==tpath: payload=candidate_tutor.encode("utf-8")
                 else: payload=zin.read(info.filename)
                 zout.writestr(info,payload)
+            package_assets=[("ai-tutor/local-model/"+name,MODEL_DIR/name) for name in MODEL_FILES]
+            package_assets.extend([("ai-tutor/local-model/rag.js",Path("ai-tutor-lab/local-model-rag.js")),("ai-tutor/local-model-demo.html",Path("ai-tutor-lab/local-model-demo.html"))])
+            for archive_name,source_file in package_assets:
+                zi=zipfile.ZipInfo(archive_name)
+                zi.external_attr=0o100644 << 16
+                zi.compress_type=zipfile.ZIP_STORED if archive_name.endswith(".bin") else zipfile.ZIP_DEFLATED
+                with source_file.open("rb") as source:zout.writestr(zi,source.read())
         entries=[{"path":x.filename,"size":x.file_size} for x in zin.infolist()]
-    summary={"experiment":"full-course-knowledge-v5","baseline_package":PACKAGE.name,"candidate_package":OUT.name,"baseline_package_sha256":hashlib.sha256(PACKAGE.read_bytes()).hexdigest(),"baseline_package_bytes":PACKAGE.stat().st_size,"candidate_package_bytes":OUT.stat().st_size,"baseline_tutor_data_bytes":len(data.encode()),"candidate_tutor_data_bytes":len(newdata.encode()),"baseline_concept_count":base_count,"candidate_concept_count":len(concepts),"assessment_qas_parsed":{"pre":10,"post":20},"assessment_qas_added_as_new_concepts":qa_add,"existing_concepts_enriched_by_assessment_qas":qa_enrich,"quick_reference_concepts_added":qrg_count,"course_html_concepts_added":course_count,"course_html_sources":sources,"qrg_source":QRG.name,"assessment_source_policy":"Only pre/post instructor answer-key Q&A; no trainer guide module Q&A or other guide content","runtime_changed":True,"runtime_patch":"Lab-only IDF-weighted query-coverage penalty to discourage high-scoring answers that omit distinctive question terms","source_runtime_bytes":len(tutor.encode()),"candidate_runtime_bytes":len(candidate_tutor.encode()),"changed_package_entries":[tpath,dpath],"hosted_inference_added":False,"webassembly_added":False,"original_zip_modified":False,"tutor_runtime_path":tpath,"tutor_data_path":dpath,"zip_entries":entries,"added_qrg_titles":[{"title":x["title"],"citation":x["citation"]} for x in added_qrg],"added_course_titles":[{"title":x["title"],"citation":x["citation"],"module":x["module_number"]} for x in added_course],"assessment_titles":[{"assessment":x["kind"],"question_number":x["n"],"question":x["question"]} for x in qas]}
+    summary={"experiment":"local-js-generation-poc-v1","baseline_package":PACKAGE.name,"candidate_package":OUT.name,"baseline_package_sha256":hashlib.sha256(PACKAGE.read_bytes()).hexdigest(),"baseline_package_bytes":PACKAGE.stat().st_size,"candidate_package_bytes":OUT.stat().st_size,"local_model_source":{"repository":"https://github.com/gszauer/Gab","revision":MODEL_COMMIT,"license":"MIT","runtime":"pure JavaScript CPU; no WebAssembly","model":"Gab 100M Q8","assets":model_asset_info,"packaged_assets":["ai-tutor/local-model/inference.js","ai-tutor/local-model/model-q8.json","ai-tutor/local-model/model-q8.bin","ai-tutor/local-model/tokenizer.json","ai-tutor/local-model/LICENSE","ai-tutor/local-model/rag.js","ai-tutor/local-model-demo.html"]},"baseline_tutor_data_bytes":len(data.encode()),"candidate_tutor_data_bytes":len(newdata.encode()),"baseline_concept_count":base_count,"candidate_concept_count":len(concepts),"assessment_qas_parsed":{"pre":10,"post":20},"assessment_qas_added_as_new_concepts":qa_add,"existing_concepts_enriched_by_assessment_qas":qa_enrich,"quick_reference_concepts_added":qrg_count,"course_html_concepts_added":course_count,"course_html_sources":sources,"qrg_source":QRG.name,"assessment_source_policy":"Only pre/post instructor answer-key Q&A; no trainer guide module Q&A or other guide content","runtime_changed":True,"runtime_patch":"Lab-only IDF-weighted query-coverage penalty to discourage high-scoring answers that omit distinctive question terms","source_runtime_bytes":len(tutor.encode()),"candidate_runtime_bytes":len(candidate_tutor.encode()),"changed_package_entries":[tpath,dpath],"hosted_inference_added":False,"webassembly_added":False,"original_zip_modified":False,"tutor_runtime_path":tpath,"tutor_data_path":dpath,"zip_entries":entries,"added_qrg_titles":[{"title":x["title"],"citation":x["citation"]} for x in added_qrg],"added_course_titles":[{"title":x["title"],"citation":x["citation"],"module":x["module_number"]} for x in added_course],"assessment_titles":[{"assessment":x["kind"],"question_number":x["n"],"question":x["question"]} for x in qas]}
     Path("ai-tutor-lab/experiment-summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding="utf-8")
     print(json.dumps({k:v for k,v in summary.items() if k not in ("zip_entries","added_qrg_titles","added_course_titles","assessment_titles")},ensure_ascii=False,indent=2))
 if __name__=="__main__":

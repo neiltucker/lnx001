@@ -1,7 +1,9 @@
-# LNX-001 AI Tutor Lab — Version 5
+# LNX-001 AI Tutor Lab — Local JS Generation POC
 
-The lab remains isolated to `ai-tutor-lab/full-course-knowledge-v1`. No Courseware Studio files are changed, and the original SCORM ZIP is never overwritten.
+All work remains on `ai-tutor-lab/full-course-knowledge-v1`; Courseware Studio is not modified, and the original SCORM archive is not overwritten.
 
-V5 retains the course-wide knowledge pack, technical metadata, and lab-only IDF-weighted query-coverage patch validated in V4. It makes one targeted indexing correction: the generated "address verification command" query anchor is no longer inferred merely from the presence of generic "display/output" wording. A passage must contain a meaningful verification, inspection, or show reference.
+V1–V5 tested course-wide knowledge ingestion and retrieval. V6 is the first local-generation feasibility experiment. It pins the MIT-licensed Gab 100M Q8 model assets from public repository `gszauer/Gab`, packages the pure-JavaScript CPU runtime and approximately 100 MB quantized weights into a separate SCORM candidate, and tests generated answers grounded in passages retrieved from the LNX-001 knowledge bundle.
 
-GitHub Actions rebuilds a separate candidate ZIP, reruns the same baseline comparison, and publishes the package and report as an artifact. No generated package is committed automatically. The experiment still uses prepared answers rather than a generative local model.
+Constraints: no hosted inference, no runtime network requests, no WebAssembly, and no external database. GitHub Actions downloads fixed-revision model assets at build time; those assets are included in the candidate ZIP. The original tutor remains available; a separate local-model demo page is included but the primary tutor UI is not switched to local generation yet.
+
+Actions results include the baseline retrieval comparison, each generated model answer, retrieved passages, prompt size, latency and expected-fact checks. This is a feasibility experiment, not a claim that a 100M-parameter model is equivalent to Chatbase. Do not promote the model or modify Courseware Studio based on this first test alone.

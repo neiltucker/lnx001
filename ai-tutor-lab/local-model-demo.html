@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LNX-001 Local AI Tutor Lab</title>
+<style>
+:root{color-scheme:light dark;font-family:system-ui,sans-serif}body{margin:0 auto;max-width:900px;padding:24px;line-height:1.5}h1{margin:0 0 6px}.muted{opacity:.72}.panel{border:1px solid #8886;border-radius:12px;padding:16px;margin:16px 0}.row{display:flex;gap:10px;flex-wrap:wrap}textarea{width:100%;min-height:86px;box-sizing:border-box;padding:12px;font:inherit;border-radius:8px;border:1px solid #8888}button{font:inherit;padding:10px 14px;border-radius:8px;cursor:pointer}#answer{white-space:pre-wrap;overflow-wrap:anywhere}#status{min-height:1.5em}.source{font-size:.9rem;border-top:1px solid #8885;padding:10px 0}
+</style></head><body>
+<h1>LNX-001 Local AI Tutor Lab</h1>
+<p class="muted">Experimental browser-local Q8 language model. Course knowledge is bundled in this SCORM package; generation uses pure JavaScript CPU inference with no WebAssembly or hosted inference service.</p>
+<div class="panel"><div class="row"><button id="load">Load local model</button><span id="status" role="status">Model not loaded</span></div><p class="muted">The quantized model is about 100 MB. First load can take time and use substantial memory.</p></div>
+<div class="panel"><label for="question"><strong>Ask a course question</strong></label><textarea id="question">Which exact SSH configuration file and directive in this course disable direct root SSH login?</textarea><div class="row"><button id="ask" disabled>Ask local tutor</button></div></div>
+<div class="panel"><h2>Retrieved course evidence</h2><div id="sources"></div></div><div class="panel"><h2>AI Tutor response</h2><div id="answer" aria-live="polite"></div></div>
+<script src="./tutor-data.js"></script><script src="./local-model/rag.js"></script><script src="./local-model/inference.js"></script>
+<script>
+(function(){'use strict';const $=id=>document.getElementById(id);let engine=null,tokenizer=null,busy=false;
+function status(s){$('status').textContent=s}
+async function load(){if(engine)return;$('load').disabled=true;try{
+status('Loading tokenizer and manifest…');const [mr,tr,wr]=await Promise.all([fetch('./local-model/model-q8.json'),fetch('./local-model/tokenizer.json'),fetch('./local-model/model-q8.bin')]);
+if(!mr.ok||!tr.ok||!wr.ok)throw new Error('Could not read all bundled model files from this SCORM location.');
+const manifest=await mr.json();tokenizer=new GabTokenizer(await tr.json());status('Loading local weights…');engine=await GabInferenceEngine.create({manifest,weightsBuffer:await wr.arrayBuffer(),tokenizer,maxContext:768});
+$('ask').disabled=false;status('Ready — local inference initialized')
+}catch(e){status('Model failed to load: '+String(e.message||e));$('load').disabled=false;throw e}}
+async function ask(){if(!engine||busy)return;const question=$('question').value.trim();if(!question)return;busy=true;$('ask').disabled=true;$('answer').textContent='Searching course content…';
+try{const concepts=(window.__CS_AI_TUTOR_DATA__||{}).concepts||[],ranked=CSLocalTutorRag.rank(question,concepts,{topK:3});
+$('sources').innerHTML=ranked.map((r,i)=>'<div class="source"><strong>['+(i+1)+'] '+String(r.concept.title||'Untitled')+'</strong><br><span class="muted">'+String(r.concept.citation||r.concept.lesson_title||'')+'</span><br>'+String(r.concept.direct_answer||'').slice(0,360)+'</div>').join('');
+const prompt=CSLocalTutorRag.buildPrompt(question,ranked,[]);if(tokenizer.encode(prompt).length>700)throw new Error('Evidence prompt exceeds the context budget.');
+$('answer').textContent='Generating locally…';status('Generating answer locally…');let answer='';
+for await(const item of engine.generate([{role:'user',text:prompt}],{maxNewTokens:80,temperature:0.15,topK:20,thinking:false})){if(item.kind==='response'){answer+=item.token.text;$('answer').textContent=answer}}
+status('Answer ready — generated on this device')
+}catch(e){$('answer').textContent='Local tutor error: '+String(e.message||e);status('Generation failed')}
+finally{busy=false;$('ask').disabled=false}}
+$('load').addEventListener('click',()=>load().catch(()=>{}));$('ask').addEventListener('click',()=>ask());
+})();
+</script></body></html>
