@@ -1,9 +1,9 @@
-# LNX-001 AI Tutor Lab — Local JS Generation POC
+# LNX-001 AI Tutor Lab
 
-All work remains on `ai-tutor-lab/full-course-knowledge-v1`; Courseware Studio is not modified, and the original SCORM archive is not overwritten.
+All experiments are isolated to branch `ai-tutor-lab/full-course-knowledge-v1`. Courseware Studio is not modified, and the original SCORM ZIP in `main` is never overwritten.
 
-V1–V5 tested course-wide knowledge ingestion and retrieval. V6 is the first local-generation feasibility experiment. It pins the MIT-licensed Gab 100M Q8 model assets from public repository `gszauer/Gab`, packages the pure-JavaScript CPU runtime and approximately 100 MB quantized weights into a separate SCORM candidate, and tests generated answers grounded in passages retrieved from the LNX-001 knowledge bundle.
+V1–V5 expanded the packaged knowledge corpus from 320 to 488 concepts using learner-facing SCORM HTML, the Quick Reference Guide HTML and only pre/post instructor answer-key Q&A from the Trainer Preparation Guide. V5 improved the fixed deterministic retrieval benchmark from 14/20 to 19/20 with no regressions, but that measured prepared-answer selection, not response generation.
 
-Constraints: no hosted inference, no runtime network requests, no WebAssembly, and no external database. GitHub Actions downloads fixed-revision model assets at build time; those assets are included in the candidate ZIP. The original tutor remains available; a separate local-model demo page is included but the primary tutor UI is not switched to local generation yet.
+V6/V7 tested the pinned Gab 100M Q8 model with pure-JavaScript CPU inference, no WebAssembly and no hosted service. The model prototype failed its factual answer checks and was too slow for a normal chat experience. **Do not integrate Gab 100M Q8 into the primary tutor.** See `docs/AI_TUTOR_LOCAL_MODEL_V6_FINDINGS.md` for the per-question results and the recommended next experiment.
 
-Actions results include the baseline retrieval comparison, each generated model answer, retrieved passages, prompt size, latency and expected-fact checks. This is a feasibility experiment, not a claim that a 100M-parameter model is equivalent to Chatbase. Do not promote the model or modify Courseware Studio based on this first test alone.
+All validation remains in GitHub Actions and all candidate SCORM packages are workflow artifacts; no generated ZIP overwrites the source package. No changes to Courseware Studio are permitted until the findings are discussed and a production plan is explicitly agreed.
