@@ -8,7 +8,7 @@ ROOT=Path.cwd()
 PACKAGE=ROOT/"LNX-001_EN_SCORM2004.zip"
 GUIDE=ROOT/"LNX-001_EN_TrainerPreparationGuide.txt"
 QRG=ROOT/"Day-01-QuickReference.html"
-OUT=ROOT/"LNX-001_EN_SCORM2004_AI-TUTOR-LAB.zip"
+OUT=ROOT/"LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V2.zip"
 WORK=Path("/tmp/lnx001-ai-tutor-lab")
 STOP=set("a an the and or but if then of to in on at by for with do does did have has had is are was were be been being what which who when where why how this that these those you your my me we us our it its they them their can could would should will as from about into than so not nor too very just only also still even any some all every most more less few command commands linux system administrator administrators user users using use used uses need should must question answer explain explanation correct choice option select following".split())
 class Visible(HTMLParser):
@@ -92,15 +92,76 @@ def module_guess(text,path,bundle):
     scores={n:sum(x in (text+" "+path).lower() for x in a) for n,a in kws.items()}
     return max(scores,key=scores.get) if max(scores.values()) else 1
 def make_record(i,title,answer,mod,mtitle,citation,kind):
-    words=re.findall(r"[A-Za-z][A-Za-z0-9_+#./-]{2,}",title+" "+answer)
+    original_title=re.sub(r"\s+"," ",title).strip()
+    body=re.sub(r"\s+"," ",answer).strip()
+
+    # Preserve high-signal technical literals before frequent words so key identifiers
+    # survive the bounded index (paths, addresses, interface names, versions, code spans).
+    paths=re.findall(r"(?<![\w.])/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+",body)
+    ips=re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b",body)
+    identifiers=re.findall(r"\b[A-Za-z][A-Za-z0-9_]*\d+[A-Za-z0-9_]*\b",body)
+    chunks=body.split(chr(96))
+    code_spans=[chunks[j].strip() for j in range(1,len(chunks),2) if chunks[j].strip()]
+    technical=[]
+    for value in paths+ips+identifiers+code_spans:
+        technical.append(value)
+        technical.extend(re.findall(r"[A-Za-z0-9_+#./:-]+",value))
+    technical.extend(re.findall(r"\b[A-Z][A-Z0-9_.+-]{1,}\b",body))
+    technical.extend(re.findall(r"\b[A-Za-z][A-Za-z0-9_.+-]*-[A-Za-z0-9_.+-]+\b",body))
+
+    words=re.findall(r"[A-Za-z][A-Za-z0-9_+#./-]{2,}",original_title+" "+body)
     counts=Counter(x.lower() for x in words if x.lower() not in STOP)
-    kw=[x for x,_ in counts.most_common(30)]
-    anchors=[title,"Explain "+title]
-    if kind=="qrg":anchors.append("How do I "+title[:1].lower()+title[1:]+"?")
-    elif kind=="assessment":anchors.append("Help me understand "+title)
-    if len(answer)>25:anchors.append(re.split(r"(?<=[.!?])\s+",answer)[0][:180])
-    ctype="framework" if kind=="qrg" else ("comparison" if re.search(r"\b(compare|difference|versus)\b",title,re.I) else "definition")
-    return {"id":i,"module_number":mod,"module_title":mtitle,"lesson_title":citation,"section_title":title,"title":title[:250],"concept_type":ctype,"direct_answer":answer[:3500],"structured_points":[],"citation":citation,"keywords":kw,"query_anchors":list(dict.fromkeys(anchors))[:5]}
+    frequent=[x for x,_ in counts.most_common(70)]
+    seen_kw=set();kw=[]
+    for value in technical+frequent:
+        value=value.strip();key=value.lower()
+        if key and key not in seen_kw:
+            seen_kw.add(key);kw.append(value)
+        if len(kw)>=100:break
+
+    display_title=original_title
+    cleaned_for_match=re.sub(r"^[^\w]+","",original_title)
+    generic=bool(re.match(r"^(?:procedures?(?:\s*[—–:-]\s*part\s*\d+)?|troubleshooting|overview|key concepts?|learning objectives?|summary|course content|module content)\b",cleaned_for_match,re.I))
+    if generic:
+        fragments=re.split(r"(?<=[.!?])\s+(?=[A-Z0-9/])|(?<=[;:])\s+(?=[A-Z0-9/])",body)
+        best_fragment="";best_score=-1
+        for fragment in fragments:
+            fragment=fragment.strip(" .;:")
+            if len(fragment)<28:continue
+            fpaths=re.findall(r"(?<![\w.])/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+",fragment)
+            fips=re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b",fragment)
+            fids=re.findall(r"\b[A-Za-z][A-Za-z0-9_]*\d+[A-Za-z0-9_]*\b",fragment)
+            fwords=[x for x in re.findall(r"[A-Za-z][A-Za-z0-9_+#./-]{2,}",fragment) if x.lower() not in STOP]
+            score=10*len(fpaths)+15*len(fips)+4*len(fids)+min(len(set(w.lower() for w in fwords)),20)
+            if len(fragment)>220:score-=3
+            if score>best_score:best_score=score;best_fragment=fragment
+        if best_fragment:
+            display_title=(original_title+" — "+best_fragment)[:240]
+
+    anchors=[original_title,display_title,"Explain "+display_title]
+    if kind=="qrg":anchors.append("How do I "+display_title[:1].lower()+display_title[1:]+"?")
+    elif kind=="assessment":anchors.append("Help me understand "+original_title)
+    if ips and identifiers:
+        for ident in identifiers[:2]:
+            anchors.append("Which IP address is configured for "+ident+"?")
+            anchors.append("Which command verifies the configured address on "+ident+"?")
+    if len(paths)>=2:
+        anchors.append("Which exact command paths does this procedure specify?")
+        anchors.append("Which command paths are allowed by this procedure?")
+    if paths:
+        anchors.append("Which configuration file or absolute path is used in this procedure?")
+    if code_spans:
+        anchors.append("Which command or code example does this section provide?")
+    if len(body)>25:
+        anchors.append(re.split(r"(?<=[.!?])\s+",body)[0][:180])
+    dedup=[];seen_anchor=set()
+    for anchor in anchors:
+        key=re.sub(r"\s+"," ",anchor).strip().lower()
+        if key and key not in seen_anchor:
+            seen_anchor.add(key);dedup.append(re.sub(r"\s+"," ",anchor).strip())
+    ctype="framework" if kind=="qrg" else ("comparison" if re.search(r"\b(compare|difference|versus)\b",original_title,re.I) else "definition")
+    return {"id":i,"module_number":mod,"module_title":mtitle,"lesson_title":citation,"section_title":original_title,"title":display_title,"concept_type":ctype,"direct_answer":body[:3500],"structured_points":[],"citation":citation,"keywords":kw,"query_anchors":dedup[:14]}
+
 def parse_bundle(js):
     marker="window.__CS_AI_TUTOR_DATA__";at=js.find(marker)
     if at<0:raise ValueError("No window.__CS_AI_TUTOR_DATA__ assignment in SCORM")
@@ -198,14 +259,14 @@ def main():
             sources.append({"path":name,"visible_chars":visible,"title":p.title or Path(name).name})
             course_count+=add_source(raw,name,"course",added_course)
         bundle["concepts"]=concepts
-        bundle["ai_tutor_lab_experiment"]={"version":"full-course-knowledge-v1","sources":["readable SCORM HTML","Quick Reference Guide HTML","trainer guide pre/post instructor answer-key Q&A only"],"runtime":"unchanged JavaScript; no hosted inference; no network calls; no WebAssembly"}
+        bundle["ai_tutor_lab_experiment"]={"version":"full-course-knowledge-v2","sources":["readable SCORM HTML","Quick Reference Guide HTML","trainer guide pre/post instructor answer-key Q&A only"],"runtime":"unchanged JavaScript; no hosted inference; no network calls; no WebAssembly"}
         newdata="window.__CS_AI_TUTOR_DATA__ = "+json.dumps(bundle,ensure_ascii=False,separators=(",",":"))+";\n"
         for d,content in ((WORK/"baseline",data),(WORK/"candidate",newdata)):
             (d/"tutor.js").write_text(tutor,encoding="utf-8");(d/"tutor-data.js").write_text(content,encoding="utf-8")
         with zipfile.ZipFile(OUT,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as zout:
             for info in zin.infolist():zout.writestr(info,newdata.encode() if info.filename==dpath else zin.read(info.filename))
         entries=[{"path":x.filename,"size":x.file_size} for x in zin.infolist()]
-    summary={"experiment":"full-course-knowledge-v1","baseline_package":PACKAGE.name,"candidate_package":OUT.name,"baseline_package_sha256":hashlib.sha256(PACKAGE.read_bytes()).hexdigest(),"baseline_package_bytes":PACKAGE.stat().st_size,"candidate_package_bytes":OUT.stat().st_size,"baseline_tutor_data_bytes":len(data.encode()),"candidate_tutor_data_bytes":len(newdata.encode()),"baseline_concept_count":base_count,"candidate_concept_count":len(concepts),"assessment_qas_parsed":{"pre":10,"post":20},"assessment_qas_added_as_new_concepts":qa_add,"existing_concepts_enriched_by_assessment_qas":qa_enrich,"quick_reference_concepts_added":qrg_count,"course_html_concepts_added":course_count,"course_html_sources":sources,"qrg_source":QRG.name,"assessment_source_policy":"Only pre/post instructor answer-key Q&A; no trainer guide module Q&A or other guide content","runtime_changed":False,"hosted_inference_added":False,"webassembly_added":False,"original_zip_modified":False,"tutor_runtime_path":tpath,"tutor_data_path":dpath,"zip_entries":entries,"added_qrg_titles":[{"title":x["title"],"citation":x["citation"]} for x in added_qrg],"added_course_titles":[{"title":x["title"],"citation":x["citation"],"module":x["module_number"]} for x in added_course],"assessment_titles":[{"assessment":x["kind"],"question_number":x["n"],"question":x["question"]} for x in qas]}
+    summary={"experiment":"full-course-knowledge-v2","baseline_package":PACKAGE.name,"candidate_package":OUT.name,"baseline_package_sha256":hashlib.sha256(PACKAGE.read_bytes()).hexdigest(),"baseline_package_bytes":PACKAGE.stat().st_size,"candidate_package_bytes":OUT.stat().st_size,"baseline_tutor_data_bytes":len(data.encode()),"candidate_tutor_data_bytes":len(newdata.encode()),"baseline_concept_count":base_count,"candidate_concept_count":len(concepts),"assessment_qas_parsed":{"pre":10,"post":20},"assessment_qas_added_as_new_concepts":qa_add,"existing_concepts_enriched_by_assessment_qas":qa_enrich,"quick_reference_concepts_added":qrg_count,"course_html_concepts_added":course_count,"course_html_sources":sources,"qrg_source":QRG.name,"assessment_source_policy":"Only pre/post instructor answer-key Q&A; no trainer guide module Q&A or other guide content","runtime_changed":False,"hosted_inference_added":False,"webassembly_added":False,"original_zip_modified":False,"tutor_runtime_path":tpath,"tutor_data_path":dpath,"zip_entries":entries,"added_qrg_titles":[{"title":x["title"],"citation":x["citation"]} for x in added_qrg],"added_course_titles":[{"title":x["title"],"citation":x["citation"],"module":x["module_number"]} for x in added_course],"assessment_titles":[{"assessment":x["kind"],"question_number":x["n"],"question":x["question"]} for x in qas]}
     Path("ai-tutor-lab/experiment-summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding="utf-8")
     print(json.dumps({k:v for k,v in summary.items() if k not in ("zip_entries","added_qrg_titles","added_course_titles","assessment_titles")},ensure_ascii=False,indent=2))
 if __name__=="__main__":

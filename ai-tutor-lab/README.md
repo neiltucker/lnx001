@@ -1,11 +1,11 @@
-# LNX-001 AI Tutor Lab
+# LNX-001 AI Tutor Lab — Version 2
 
-This is an isolated, repeatable test environment for the exported Linux SCORM course. All work is on branch ai-tutor-lab/full-course-knowledge-v1. No files in Courseware Studio are changed and the original SCORM ZIP is never overwritten.
+This experiment is isolated to branch `ai-tutor-lab/full-course-knowledge-v1`. No Courseware Studio files are changed, and the original SCORM ZIP is never overwritten.
 
-The first experiment keeps the existing tutor JavaScript unchanged and changes only the packaged knowledge data. It adds readable HTML content from the SCORM archive, the repository's Day-01-QuickReference.html, and only the pre/post instructor answer-key Q&A sections from LNX-001_EN_TrainerPreparationGuide.txt. It specifically excludes the guide's Module Q&A Reference and all other guide content.
+Version 1 assembled a course-wide knowledge pack from readable SCORM HTML, the learner-facing Quick Reference Guide HTML, and only pre/post instructor answer-key Q&A from the Trainer Preparation Guide. The guide's Module Q&A Reference and all other instructor-only material are excluded.
 
-A GitHub Actions run builds a separately named candidate SCORM, executes a fixed baseline-versus-candidate question suite, and publishes the candidate plus JSON/Markdown reports as a downloadable workflow artifact. Generated packages and reports are not committed automatically.
+Version 2 keeps the same source policy and unchanged tutor JavaScript, but improves build-time indexing by prioritizing literal technical paths, IP addresses, identifiers, and inline code; generating descriptive titles from otherwise generic procedure headings; and adding generic question anchors for address/interface and configuration-path relationships.
 
-This experiment tests retrieval coverage only. It does not provide generative multi-passage synthesis or establish Chatbase equivalence. The candidate should be reviewed before importing it into a separate LMS test course.
+GitHub Actions runs a fixed baseline-versus-candidate suite against the actual embedded JavaScript runtime and publishes the V2 package plus JSON/Markdown reports as an artifact. Generated packages and reports are not committed automatically.
 
-Workflow trigger verification: this README update was made through the repository contents API to confirm the branch workflow trigger after the lab harness was installed.
+This experiment tests deterministic retrieval only. It does not provide generative multi-passage synthesis or establish Chatbase equivalence.
