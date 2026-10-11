@@ -85,13 +85,18 @@ async function main() {
     const ranked = Rag.rank(test.question, course.concepts, { topK: 3 });
     const prompt = Rag.buildPrompt(test.question, ranked, []);
     completeOutput = '';
+    const eventsStart = engineEvents.length;
     const genStart = performance.now();
     llama3pure({
       type: 'generate',
       chatHistory: [{ role: 'user', content: prompt }]
     });
     const latencyMs = Math.round(performance.now() - genStart);
-    const response = String(completeOutput || '').replace(/<\|im_end\|>|<\|endoftext\|>/g, '').trim();
+    const emittedEvents = engineEvents.slice(eventsStart);
+    const tokenChunks = emittedEvents.filter(e => e && e.type === 'token').map(e => String(e.token || ''));
+    const stopDebug = emittedEvents.find(e => e && e.type === 'stop-debug') || null;
+    const completeEvent = emittedEvents.find(e => e && e.type === 'complete') || null;
+    const response = String(completeOutput || tokenChunks.join('') || '').replace(/<\|im_end\|>|<\|endoftext\|>/g, '').trim();
     const checks = checkPatterns(response, test.patterns);
     let sequencePass = true;
     if (test.ordered) {
@@ -104,6 +109,7 @@ async function main() {
       pass: checks.every(c => c.pass) && sequencePass,
       checks, ordered_check: test.ordered ? { pass: sequencePass, description: 'Allow SSH/OpenSSH before enabling UFW' } : null,
       response, prompt_chars: prompt.length, prompt_source_count: ranked.length,
+      engine_diagnostics: { event_types: emittedEvents.map(e => e && e.type).filter(Boolean), token_event_count: tokenChunks.length, first_tokens: tokenChunks.slice(0, 12), stop: stopDebug, complete_output_length: completeEvent && typeof completeEvent.output === 'string' ? completeEvent.output.length : null },
       retrieved: ranked.map(x => ({ title: x.concept.title, module: x.concept.module_title, citation: x.concept.citation, score: Number(x.score.toFixed(3)) })),
       latency_ms: latencyMs, response_words: response ? response.split(/\s+/).length : 0
     });
@@ -112,6 +118,7 @@ async function main() {
     console.log('Response latency: ' + latencyMs + ' ms');
     console.log('Retrieved: ' + ranked.map(x => x.concept.title).join(' | '));
     console.log('Answer: ' + response);
+    console.log('Engine diagnostics: ' + JSON.stringify(results[results.length - 1].engine_diagnostics));
     console.log('Checks: ' + JSON.stringify(checks) + (test.ordered ? '; ordered=' + sequencePass : ''));
   }
   const result = {

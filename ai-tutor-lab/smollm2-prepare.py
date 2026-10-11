@@ -107,6 +107,15 @@ def download_assets():
 '''
     patched = original[:start] + replacement + original[end:]
     patched = patched.replace('findSpecialToken("<|eot_id|>")', 'findSpecialToken("<|im_end|>")')
+    eos_old = 'if (next === tokenizer.eosToken) {\n        break\n      }'
+    eos_new = 'if (next === tokenizer.eosToken) {\n        postMessage({ type: "stop-debug", stop: "eos", nextToken: next, eosToken: tokenizer.eosToken, eotToken: tokenizer.eotToken })\n        break\n      }'
+    eot_old = 'if (next === tokenizer.eotToken) {\n        break\n      }'
+    eot_new = 'if (next === tokenizer.eotToken) {\n        postMessage({ type: "stop-debug", stop: "eot", nextToken: next, eosToken: tokenizer.eosToken, eotToken: tokenizer.eotToken })\n        break\n      }'
+    if patched.count(eos_old) != 1 or patched.count(eot_old) != 1:
+        raise RuntimeError("Could not find exactly one EOS and EOT stopping branch for diagnostics")
+    patched = patched.replace(eos_old, eos_new, 1)
+    patched = patched.replace(eot_old, eot_new, 1)
+
     old = "var effectiveMaxTokens = maxTokens"
     if patched.count(old) != 1:
         raise RuntimeError("Could not find the expected generation-limit anchor in the JS engine")
