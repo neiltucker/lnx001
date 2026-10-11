@@ -107,11 +107,11 @@ def parse_bundle(js):
     eq=js.find("=",at+len(marker));semi=js.rfind(";")
     return json.loads(js[eq+1:semi if semi>eq else None].strip())
 def assessment_records(guide):
-    # Normalize common dash and non-breaking-space variants before section matching.
-    guide=guide.replace("\\u00a0"," ").replace("—","-").replace("–","-").replace("−","-")
-    a=re.search(r"Pre-Assessment\\s*-\\s*Instructor Answer Key",guide,re.I)
-    b=re.search(r"Post-Assessment\\s*-\\s*Student Handout",guide,re.I)
-    c=re.search(r"Post-Assessment\\s*-\\s*Instructor Answer Key",guide,re.I)
+    # Standardize typography in this text export before locating assessment answer-key sections.
+    guide=guide.replace(chr(160)," ").replace("—","-").replace("–","-").replace("−","-")
+    a=re.search("Pre-Assessment +- +Instructor Answer Key",guide,re.I)
+    b=re.search("Post-Assessment +- +Student Handout",guide,re.I)
+    c=re.search("Post-Assessment +- +Instructor Answer Key",guide,re.I)
     if not(a and b and c):
         nearby=[line for line in guide.splitlines() if "Assessment" in line and ("Instructor" in line or "Student Handout" in line)]
         raise ValueError("Missing expected answer-key headings: pre="+str(bool(a))+", post-student="+str(bool(b))+", post-key="+str(bool(c))+"; found="+repr(nearby[:12]))
