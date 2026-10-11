@@ -1,0 +1,46 @@
+name: LNX-001 AI Tutor Lab
+
+on:
+  push:
+    branches:
+      - 'ai-tutor-lab/**'
+    paths:
+      - 'ai-tutor-lab/**'
+      - '.github/workflows/ai-tutor-lab.yml'
+      - 'LNX-001_EN_SCORM2004.zip'
+      - 'LNX-001_EN_TrainerPreparationGuide.txt'
+      - 'Day-01-QuickReference.html'
+
+permissions:
+  contents: read
+
+jobs:
+  full-course-knowledge-experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out experiment branch
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build separate candidate SCORM package
+        run: python ai-tutor-lab/build_experiment.py
+      - name: Run baseline versus candidate runtime tests
+        run: node ai-tutor-lab/runtime-test.cjs
+      - name: Upload original, candidate, and reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lnx001-ai-tutor-full-course-knowledge-v1
+          path: |
+            LNX-001_EN_SCORM2004.zip
+            LNX-001_EN_SCORM2004_AI-TUTOR-LAB.zip
+            ai-tutor-lab/experiment-summary.json
+            ai-tutor-lab/runtime-comparison.json
+            ai-tutor-lab/EXPERIMENT_REPORT.md
+          if-no-files-found: error
