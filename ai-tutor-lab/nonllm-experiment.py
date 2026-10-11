@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import html
 import re
 import sys
 import zipfile
@@ -22,7 +23,7 @@ builder = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = builder
 spec.loader.exec_module(builder)
 
-QUIZ_HINT = re.compile(r"quiz|knowledge check|check your understanding|test your knowledge|end.of.module|module assessment|review questions|multiple.choice|question\s+\d+\s+of\s+\d+", re.I)
+QUIZ_HINT = re.compile(r"quiz|knowledge check|check your understanding|test your understanding|test your knowledge|select the best answer|end.of.module|module assessment|review questions|multiple.choice|question\\s+\\d+\\s+of\\s+\\d+", re.I)
 QUESTION_START = re.compile(r"^(?:question\s*\d{1,2}\s*[:.)-]?\s*)?(?:what|why|how|which|where|when|who|whom|whose|select|choose|identify|name|list|compare|explain|true or false|is it true|does|do|can|should|would|will|in which|under what)\b", re.I)
 EXPLICIT_ANSWER = re.compile(r"(?i)\b(?:correct answer|correct option|the answer is|answer key)\s*[:\-]\s*([^.;\r\n]{2,240})")
 EXPLICIT_EXPLANATION = re.compile(r"(?i)\b(?:explanation|feedback|why this is correct)\s*[:\-]\s*([^.\r\n]{15,400})")
@@ -84,48 +85,82 @@ def extract_quiz_prompts(raw, path):
     parser, visible = read_html_blocks(raw)
     if not visible:
         return {"is_quiz": False, "items": [], "title": ""}
+
+    # Pull exact learner-visible question text from the quiz markup. Do not scrape
+    # answer choices or hidden JS state; both can contain distractors or answer keys.
     candidates = []
-    block_prompts = []
-    for bi, (tag, block) in enumerate(parser.blocks):
-        # Keep quiz text granular; a paragraph can contain both the question and distractors.
-        parts = re.split(r"(?<=[?])\s+(?=[A-Z0-9])|(?<=[.!])\s+(?=(?:What|Why|How|Which|Where|When|Who|Select|Choose|Identify|Compare|Explain)\b)", block)
-        for part in parts:
-            q = re.sub(r"^\s*(?:Question\s*\d{1,2}\s*[:.)-]?\s*)", "", part, flags=re.I).strip()
-            q = re.sub(r"\s+", " ", q).strip(" \t\r\n•-")
-            if len(q) < 14 or len(q) > 320 or "?" not in q:
-                continue
-            if not QUESTION_START.search(q):
-                continue
-            if re.match(r"(?i)^(?:correct answer|answer key|explanation|feedback|option [a-d]|[a-d][.)]\s)", q):
-                continue
-            key = re.sub(r"[^a-z0-9]+", " ", q.lower()).strip()
-            if key and key not in {x["key"] for x in candidates}:
-                candidates.append({"question": q, "key": key, "block_index": bi})
-                block_prompts.append(bi)
-    options_text = " ".join(t for _, t in parser.blocks)
-    option_markers = len(re.findall(r"(?im)(?:^|\s)(?:[A-D][.)]|option\s+[A-D]\b)", options_text))
+    qpattern = re.compile(
+        r'<(?:span|div|p)[^>]*class=["\\'][^"\\']*\\bquestion-text\\b[^"\\']*["\\'][^>]*>(.*?)</(?:span|div|p)>',
+        re.I | re.S
+    )
+    for m in qpattern.finditer(raw):
+        question = html.unescape(re.sub(r"<[^>]+>", " ", m.group(1)))
+        question = re.sub(r"\\s+", " ", question).strip(" \\t\\r\\n•-")
+        if len(question) < 14 or len(question) > 320 or not QUESTION_START.search(question):
+            continue
+        key = re.sub(r"[^a-z0-9]+", " ", question.lower()).strip()
+        if key and key not in {x["key"] for x in candidates}:
+            candidates.append({"question": question, "key": key, "block_index": len(candidates)})
+
+    # Fallback to visible blocks for any quiz authored without question-text classes.
+    if not candidates:
+        for bi, (tag, block) in enumerate(parser.blocks):
+            parts = re.split(r"(?<=[?])\\s+(?=[A-Z0-9])|(?<=[.!])\\s+(?=(?:What|Why|How|Which|Where|When|Who|Select|Choose|Identify|Compare|Explain)\\b)", block)
+            for part in parts:
+                question = re.sub(r"^\\s*(?:Question\\s*\\d{1,2}\\s*[:.)-]?\\s*)", "", part, flags=re.I).strip()
+                question = re.sub(r"\\s+", " ", question).strip(" \\t\\r\\n•-")
+                if len(question) < 14 or len(question) > 320 or "?" not in question or not QUESTION_START.search(question):
+                    continue
+                key = re.sub(r"[^a-z0-9]+", " ", question.lower()).strip()
+                if key and key not in {x["key"] for x in candidates}:
+                    candidates.append({"question": question, "key": key, "block_index": bi})
+
     hinted = bool(QUIZ_HINT.search(path + " " + parser.title + " " + visible))
-    is_quiz = bool(candidates) and (hinted or (len(candidates) >= 3 and option_markers >= 3))
+    is_quiz = bool(candidates) and (hinted or len(candidates) >= 3)
     if not is_quiz:
         return {"is_quiz": False, "items": [], "title": parser.title}
+
+    # Explicit answers/feedback are only read from learner-visible marked feedback
+    # blocks. This SCORM source does not expose such feedback in static visible content,
+    # so in this experiment the questions train retrieval matching, not answer facts.
     items = []
     for item in candidates:
-        answer = ""
-        explanation = ""
-        start = item["block_index"]
-        later_questions = [x["block_index"] for x in candidates if x["block_index"] > start]
-        end = min(later_questions) if later_questions else min(len(parser.blocks), start + 8)
-        for _, text in parser.blocks[start:end]:
-            am = EXPLICIT_ANSWER.search(text)
-            em = EXPLICIT_EXPLANATION.search(text)
-            if am and not answer: answer = am.group(1).strip()
-            if em and not explanation: explanation = em.group(1).strip()
-        if answer:
-            answer_text = "Correct answer: " + answer + (" . " + explanation if explanation else "")
-        else:
-            answer_text = ""
-        items.append({"question": item["question"], "answer": answer_text, "block_index": start})
+        items.append({"question": item["question"], "answer": "", "block_index": item["block_index"]})
     return {"is_quiz": True, "items": items, "title": parser.title, "visible_chars": len(visible)}
+
+
+def remove_div_with_class(raw, class_name):
+    """Remove one matching DIV and its nested DIVs, preserving the rest of the HTML."""
+    pattern = re.compile(
+        r'<div\\b(?=[^>]*\\bclass\\s*=\\s*["\\'][^"\\']*\\b' + re.escape(class_name) + r'\\b[^"\\']*["\\'])[^>]*>',
+        re.I
+    )
+    out = []
+    cursor = 0
+    while True:
+        m = pattern.search(raw, cursor)
+        if not m:
+            out.append(raw[cursor:])
+            break
+        out.append(raw[cursor:m.start()])
+        depth = 1
+        token_re = re.compile(r'</?div\\b[^>]*>', re.I)
+        close_at = None
+        for token in token_re.finditer(raw, m.end()):
+            tag = token.group(0)
+            if tag.startswith("</"):
+                depth -= 1
+                if depth == 0:
+                    close_at = token.end()
+                    break
+            elif not tag.rstrip().endswith("/>"):
+                depth += 1
+        if close_at is None:
+            # Safer to keep unbalanced source intact than delete unrelated content.
+            out.append(raw[m.start():])
+            break
+        cursor = close_at
+    return "".join(out)
 
 def attach_question_anchor(concepts, question, citation, threshold=0.16):
     qterms = builder.toks(question)
@@ -240,17 +275,18 @@ def main():
             if len(visible) < 160: continue
             html_sources.append({"path": name, "visible_chars": len(visible), "title": parser.title or Path(name).name})
             quiz = extract_quiz_prompts(raw, name + " " + parser.title)
+            content_raw = raw
             if quiz["is_quiz"]:
                 quiz_sources.append({"path": name, "title": quiz.get("title", ""), "question_count": len(quiz["items"]), "visible_chars": quiz.get("visible_chars", len(visible))})
                 for qi, item in enumerate(quiz["items"], 1):
                     citation = "SCORM end-of-module quiz — " + name + ((" — " + quiz["title"]) if quiz.get("title") else "") + " — question " + str(qi)
                     quiz_item = {"question": item["question"], "answer": item["answer"], "citation": citation, "source": name, "number": qi}
                     quiz_items.append(quiz_item)
-                # Never index the raw multiple-choice page: it may contain distractors.
-                # Explicitly labeled correct answers/feedback become their own records below.
-                skipped_quiz_sources.append(name)
-                continue
-            for heading, body in builder.html_sections(raw, name)[0]:
+                # Keep the lesson content in the module HTML, but strip only its quiz UI
+                # so choices/distractors cannot leak into content records.
+                content_raw = remove_div_with_class(raw, "screen-quiz")
+                skipped_quiz_sources.append(name + " (quiz panel only)")
+            for heading, body in builder.html_sections(content_raw, name)[0]:
                 key = builder.norm(heading + " " + body)
                 if len(key) < 100 or key in seen_titles: continue
                 mod = builder.module_guess(heading + " " + body[:300], name, bundle)
