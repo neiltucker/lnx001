@@ -76,7 +76,8 @@ async function main() {
     cbRender: () => {}
   });
   const loadMs = Math.round(performance.now() - loadStart);
-  if (!engineEvents.some(e => e && e.type === 'loaded')) {
+  const loadedEvent = engineEvents.find(e => e && e.type === 'loaded') || null;
+  if (!loadedEvent) {
     throw new Error('Pure-JS engine did not emit its loaded event; inspect the run log for model incompatibility');
   }
 
@@ -127,6 +128,7 @@ async function main() {
     source: manifest,
     course_knowledge_concepts: course.concepts.length,
     runtime_load_ms: loadMs,
+    runtime_model_info: loadedEvent ? { preTokenizer: loadedEvent.preTokenizer, mergeCount: loadedEvent.mergeCount, eosToken: loadedEvent.eosToken, eotToken: loadedEvent.eotToken } : null,
     context_size: 1024,
     max_new_tokens: 48,
     test_count: results.length,

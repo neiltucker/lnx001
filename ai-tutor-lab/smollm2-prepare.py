@@ -106,6 +106,89 @@ def download_assets():
 
 '''
     patched = original[:start] + replacement + original[end:]
+    # llama3pure's default fast path uses greedy matching and skips GGUF BPE merges.
+    # SmolLM2 uses GPT-2 byte-level BPE, so load and apply its embedded merge ranks.
+    patched = patched.replace('  "tokenizer.ggml.merges": true,\n', "")
+    patched = patched.replace('  "tokenizer.ggml.pre": true,\n', "")
+    tokenizer_anchor = '    specialTokens: {},'
+    tokenizer_replacement = '    preTokenizer: meta["tokenizer.ggml.pre"] || "",\n    mergeRefs: meta["tokenizer.ggml.merges"] || null,\n    mergeRanks: null,\n    specialTokens: {},'
+    if patched.count(tokenizer_anchor) != 1:
+        raise RuntimeError("Could not find tokenizer configuration object for GPT-2 BPE metadata")
+    patched = patched.replace(tokenizer_anchor, tokenizer_replacement, 1)
+
+    gpt2_bpe_helpers = r'''function buildSmolLM2MergeRanks() {
+  if (tokenizer.mergeRanks) {
+    return
+  }
+  var refs = tokenizer.mergeRefs
+  if (!refs || !refs.__stringRefs) {
+    throw new Error("SmolLM2 GGUF is missing tokenizer.ggml.merges")
+  }
+  var ranks = Object.create(null)
+  var p = refs.vocabOffset
+  var dv = dataView
+  for (var i = 0; i < refs.vocabCount; i = i + 1) {
+    var len = dv.getUint32(p, true)
+    var merge = decodeUTF8(ggufUint8.subarray(p + 8, p + 8 + len))
+    ranks[merge] = i
+    p = p + 8 + len
+  }
+  tokenizer.mergeRanks = ranks
+}
+
+function bpeEncodeSmolLM2(text) {
+  buildVocabHash()
+  buildSmolLM2MergeRanks()
+  // GPT-2 ByteLevel pre-tokenizer pattern, preserving every source character.
+  var chunks = text.match(/'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/giu) || []
+  if (chunks.join("") !== text) {
+    throw new Error("SmolLM2 GPT-2 pre-tokenizer did not preserve the full prompt")
+  }
+  var tokens = []
+  var ranks = tokenizer.mergeRanks
+  for (var c = 0; c < chunks.length; c = c + 1) {
+    var mapped = textToTiktoken(chunks[c])
+    var parts = Array.from(mapped)
+    for (;;) {
+      var bestRank = Infinity
+      var bestIndex = -1
+      for (var j = 0; j + 1 < parts.length; j = j + 1) {
+        var rank = ranks[parts[j] + " " + parts[j + 1]]
+        if (rank !== undefined && rank < bestRank) {
+          bestRank = rank
+          bestIndex = j
+        }
+      }
+      if (bestIndex < 0) {
+        break
+      }
+      parts[bestIndex] = parts[bestIndex] + parts[bestIndex + 1]
+      parts.splice(bestIndex + 1, 1)
+    }
+    for (var t = 0; t < parts.length; t = t + 1) {
+      var bytes = encodeStringToUTF8(parts[t])
+      var tokenId = vocabLongestMatch(bytes, 0, bytes.length)
+      if (tokenId < 0 || tokenizer.vocabLengths[tokenId] !== bytes.length) {
+        throw new Error("SmolLM2 BPE piece is absent from the GGUF vocabulary")
+      }
+      tokens.push(tokenId)
+    }
+  }
+  return tokens
+}
+
+'''
+    bpe_anchor = "function bpeEncode(text) {\n"
+    bpe_branch = 'function bpeEncode(text) {\n  if (!config.isGemma && tokenizer.mergeRefs && /gpt-2|gpt2|smollm/i.test(tokenizer.preTokenizer)) {\n    return bpeEncodeSmolLM2(text)\n  }\n'
+    if patched.count(bpe_anchor) != 1:
+        raise RuntimeError("Could not find bpeEncode anchor for model-specific tokenizer")
+    patched = patched.replace(bpe_anchor, gpt2_bpe_helpers + bpe_branch, 1)
+
+    loaded_anchor = '        postMessage({\n          type: "loaded",\n        })'
+    loaded_replacement = '        postMessage({\n          type: "loaded",\n          preTokenizer: tokenizer.preTokenizer,\n          mergeCount: tokenizer.mergeRefs && tokenizer.mergeRefs.__stringRefs ? tokenizer.mergeRefs.vocabCount : 0,\n          eosToken: tokenizer.eosToken,\n          eotToken: tokenizer.eotToken,\n        })'
+    if patched.count(loaded_anchor) != 1:
+        raise RuntimeError("Could not find model-loaded event for tokenizer diagnostics")
+    patched = patched.replace(loaded_anchor, loaded_replacement, 1)
     patched = patched.replace('findSpecialToken("<|eot_id|>")', 'findSpecialToken("<|im_end|>")')
     eos_old = 'if (next === tokenizer.eosToken) {\n        break\n      }'
     eos_new = 'if (next === tokenizer.eosToken) {\n        postMessage({ type: "stop-debug", stop: "eos", nextToken: next, eosToken: tokenizer.eosToken, eotToken: tokenizer.eotToken })\n        break\n      }'
@@ -141,7 +224,8 @@ def download_assets():
         "runtime": "pure JavaScript CPU inference; no WebAssembly; no hosted inference",
         "chat_template_patch": "SmolLM2 ChatML special tokens and im_end stopping",
         "generation_limit_tokens": 48,
-        "weights_quantization": "Q4_K_M"
+        "weights_quantization": "Q4_K_M",
+        "tokenizer_strategy": "GGUF-embedded GPT-2 byte-level BPE merge ranks when metadata reports GPT-2/SmolLM tokenizer"
     }
 
 def build_candidate(model_info):
