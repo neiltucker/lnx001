@@ -11,6 +11,8 @@ on:
       - 'ai-tutor-lab/local-model-rag.js'
       - 'ai-tutor-lab/smollm2-prepare.py'
       - 'ai-tutor-lab/smollm2-test.cjs'
+      - 'ai-tutor-lab/smollm2-360m-prepare.py'
+      - 'ai-tutor-lab/smollm2-360m-test.cjs'
       - '.github/workflows/ai-tutor-lab.yml'
       - 'LNX-001_EN_SCORM2004.zip'
       - 'LNX-001_EN_TrainerPreparationGuide.txt'
@@ -44,6 +46,11 @@ jobs:
         with:
           path: ai-tutor-lab/smollm2-cache
           key: smollm2-135m-q4km-llama3pure-03d2b7d-v1
+      - name: Cache SmolLM2-360M model and pure-JavaScript runtime
+        uses: actions/cache@v4
+        with:
+          path: ai-tutor-lab/smollm2-360m-cache
+          key: smollm2-360m-q4km-llama3pure-03d2b7d-v1
       - name: Build separate full-course knowledge candidate
         run: python ai-tutor-lab/build_experiment.py
       - name: Run baseline versus candidate retrieval tests
@@ -54,18 +61,24 @@ jobs:
         run: python ai-tutor-lab/smollm2-prepare.py
       - name: Test SmolLM2-135M-Instruct with pure-JavaScript inference
         run: node ai-tutor-lab/smollm2-test.cjs
+      - name: Prepare SmolLM2-360M-Instruct candidate package
+        run: python ai-tutor-lab/smollm2-360m-prepare.py
+      - name: Test SmolLM2-360M-Instruct with pure-JavaScript inference
+        run: node ai-tutor-lab/smollm2-360m-test.cjs
       - name: Upload original, candidate packages, and reports
         uses: actions/upload-artifact@v4
         with:
-          name: lnx001-ai-tutor-smollm2-pure-js-v1
+          name: lnx001-ai-tutor-smollm2-135m-360m-pure-js-v1
           path: |
             LNX-001_EN_SCORM2004.zip
-            LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V6-LOCAL-LLM.zip
             LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V8-SMOLLM2.zip
+            LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V9-SMOLLM2-360M.zip
             ai-tutor-lab/experiment-summary.json
             ai-tutor-lab/runtime-comparison.json
             ai-tutor-lab/EXPERIMENT_REPORT.md
             ai-tutor-lab/local-model-results.json
             ai-tutor-lab/smollm2-manifest.json
             ai-tutor-lab/smollm2-results.json
+            ai-tutor-lab/smollm2-360m-manifest.json
+            ai-tutor-lab/smollm2-360m-results.json
           if-no-files-found: error

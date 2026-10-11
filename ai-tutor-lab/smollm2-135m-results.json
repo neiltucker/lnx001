@@ -1,0 +1,74 @@
+{
+  "experiment": "smollm2-135m-instruct-pure-js-v1",
+  "workflow_run": "https://github.com/neiltucker/lnx001/actions/runs/38108416690",
+  "branch": "ai-tutor-lab/full-course-knowledge-v1",
+  "commit": "5d343351e3a4c8f51f1c2ecea6d65a5b9eceb8a4",
+  "model": {
+    "repo": "bartowski/SmolLM2-135M-Instruct-GGUF",
+    "revision": "09816acd5d99df7be770d85ea30822623dab342c",
+    "file": "SmolLM2-135M-Instruct-Q4_K_M.gguf",
+    "quantization": "Q4_K_M",
+    "weight_bytes": 105454432,
+    "weight_sha256": "2e8040ceae7815abe0dcb3540b9995eaa1fa0d2ca9e797d0a635ae4433c68c2d",
+    "license": "Apache-2.0"
+  },
+  "runtime": {
+    "repo": "lrusso/llama3pure",
+    "revision": "03d2b7d794dfb7501f0106e55eb08bd584a745f6",
+    "language": "JavaScript",
+    "wasm": false,
+    "hosted_inference": false,
+    "tokenizer_fix": "Read GGUF GPT-2/SmolLM BPE merge ranks and apply byte-level BPE"
+  },
+  "runtime_model_info": {
+    "preTokenizer": "smollm",
+    "mergeCount": 48900,
+    "eosToken": 2,
+    "eotToken": -1
+  },
+  "test": {
+    "question_count": 3,
+    "max_new_tokens": 48,
+    "pass_count": 0,
+    "fail_count": 3
+  },
+  "candidate": {
+    "file": "LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V8-SMOLLM2.zip",
+    "bytes": 114998551,
+    "sha256": "c611312355bce7c4e972d4c0158d9ef46ce7982cecf49490c3660e591dc93fa2",
+    "production_tutor_modified": false,
+    "source_package_modified": false
+  },
+  "outcomes": [
+    {
+      "id": "ssh-root-hardening",
+      "latency_ms": 74097,
+      "pass": false,
+      "required_facts": [
+        "99-hardening.conf",
+        "PermitRootLogin no"
+      ],
+      "observed": "Generic response; omitted exact directive and filename."
+    },
+    {
+      "id": "directory-execute-permission",
+      "latency_ms": 45712,
+      "pass": false,
+      "required_facts": [
+        "directory",
+        "traversal or search"
+      ],
+      "observed": "Described creating/deleting directories, not directory traversal/search."
+    },
+    {
+      "id": "ufw-remote-access-safety",
+      "latency_ms": 50187,
+      "pass": false,
+      "required_facts": [
+        "allow OpenSSH before enabling UFW"
+      ],
+      "observed": "Correctly began with sudo ufw allow OpenSSH but did not provide the enable step within the output limit."
+    }
+  ],
+  "conclusion": "Reject this 135M model + pure-JS CPU configuration for the tutor: 0/3 fact checks, 45.7–74.1 s per response. The corrected tokenizer restored text generation, so these are valid end-to-end samples, but only on GitHub's Node.js CPU runner; browser/LMS performance is untested."
+}

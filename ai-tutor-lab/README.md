@@ -7,3 +7,8 @@ V1–V5 expanded the packaged knowledge corpus from 320 to 488 concepts using le
 V6/V7 tested the pinned Gab 100M Q8 model with pure-JavaScript CPU inference, no WebAssembly and no hosted service. The model prototype failed its factual answer checks and was too slow for a normal chat experience. **Do not integrate Gab 100M Q8 into the primary tutor.** See `docs/AI_TUTOR_LOCAL_MODEL_V6_FINDINGS.md` for the per-question results and the recommended next experiment.
 
 All validation remains in GitHub Actions and all candidate SCORM packages are workflow artifacts; no generated ZIP overwrites the source package. No changes to Courseware Studio are permitted until the findings are discussed and a production plan is explicitly agreed.
+
+
+## Offline small-model evaluations
+
+See [`docs/AI_TUTOR_SMALL_MODEL_TESTS.md`](../docs/AI_TUTOR_SMALL_MODEL_TESTS.md) for the validated SmolLM2-135M result and ordered model sequence. Results from GitHub Actions, not local testing, determine acceptance. The 135M pure-JavaScript CPU configuration failed all 3 technical fact checks and took 45.7–74.1 seconds per response.
