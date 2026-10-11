@@ -10,10 +10,16 @@ const tests=[
 {id:'qrg-process',q:'How should I stop a stuck process gracefully before forcing it?',any:[/SIGTERM/i,/kill\s+-15/i]},
 {id:'qrg-ufw-ssh',q:'What should I allow before enabling UFW on a remote SSH server?',any:[/OpenSSH/i,/ufw\s+allow/i]},
 {id:'pre-assessment-x-dir',q:'What permission lets a user traverse a directory and change into it with cd?',any:[/execute/i,/traversal/i]},
-{id:'post-assessment-visudo',q:'Why use visudo instead of editing sudoers with a normal text editor?',all:[/visudo/i,/syntax validation/i]},
+{id:'post-assessment-visudo',q:'Why use visudo instead of editing sudoers with a normal text editor?',all:[/visudo/i,/(syntax validation|validates?.{0,35}syntax)/i]},
 {id:'course-pci',q:'Which Linux command inspects devices connected to PCI buses?',any:[/lspci/i]},
 {id:'course-absolute-path',q:'Explain the difference between absolute and relative filesystem paths.',any:[/absolute path/i,/root directory/i,/forward slash/i]},
 {id:'cross-source-firewall',q:'How can I turn on a firewall without locking myself out of SSH?',any:[/OpenSSH/i,/ufw\s+allow/i]},
+{id:'course-netplan-address',q:'Which static IP address is assigned to the dummy labnet0 interface?',all:[/192\.168\.200\.10\/24/i,/labnet0/i]},
+{id:'course-netplan-dropin',q:'What path does the lab use for its Netplan static IP configuration file for labnet0?',all:[/90-virtual-lab\.yaml/i,/labnet0/i]},
+{id:'course-sudo-allowed-commands',q:'Which two command paths are allowed by the secadmin sudo drop-in?',all:[/\/usr\/sbin\/ufw status/i,/\/usr\/bin\/ss/i]},
+{id:'course-verify-lab-address',q:'Which command verifies the configured address on the labnet0 dummy interface?',all:[/ip addr show labnet0/i,/192\.168\.200\.10\/24/i]},
+{id:'course-fstab-fields',q:'What six fields go into an /etc/fstab entry for a UUID-based ext4 mount?',all:[/UUID/i,/Mount Point/i,/Filesystem Type/i,/Mount Options/i]},
+{id:'course-yaml-troubleshooting',q:'How should I fix a YAML parsing error in the lab Netplan configuration?',all:[/tab/i,/spaces/i,/90-virtual-lab\.yaml/i]},
 {id:'out-of-scope-brakes',q:'How do I replace brake pads on a 2026 Honda Accord?',outside:true}
 ];
 function makeEnv(which){
