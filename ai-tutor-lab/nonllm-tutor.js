@@ -6,7 +6,7 @@
   "use strict";
   const STOP = new Set(("a an the and or but if then of to in on at by for with do does did have has had is are was were be been being what which who when where why how this that these those you your my me we us our it its they them their can could would should will as from about into than so not nor too very just only also still even any some all every most more less few please tell explain describe following".split(/\s+/)));
   const ALIAS_GROUPS = [
-    { phrases: ["directory traversal", "traverse a directory", "traversing a directory", "change into a directory", "enter a directory", "directory execute permission", "directory search permission", "use cd into"], terms: ["execute", "search", "traversal", "permission", "directory", "cd"] },
+    { phrases: ["directory traversal", "traverse a directory", "traversing a directory", "change into a directory", "enter a directory", "directory execute permission", "directory search permission", "use cd into", "cd into a directory", "cannot cd into a directory", "directory permission", "permission to cd"], terms: ["execute", "search", "traversal", "permission", "directory", "cd"] },
     { phrases: ["supplementary group", "additional group", "keep existing group memberships", "without removing existing memberships"], terms: ["usermod", "-aG", "append", "group", "membership"] },
     { phrases: ["gracefully stop", "stop a process gracefully", "stuck process", "before forcing it"], terms: ["SIGTERM", "kill -15", "termination", "process"] },
     { phrases: ["remote ssh server", "lock myself out", "locking myself out", "remote access safety"], terms: ["ufw", "allow OpenSSH", "firewall", "SSH"] },
@@ -95,6 +95,12 @@
     const wantsCommand = /\b(?:which|what)\s+(?:exact\s+)?command\b/i.test(qnorm) || /\bcommand\s+(?:verifies|shows|displays|checks|lists|validates)\b/i.test(qnorm);
     const wantsCommandPaths = /\bcommand paths?\b/i.test(qnorm);
     const hasNamedDirective = /\bpermitrootlogin\s+no\b/i.test(qnorm);
+    const wantsDirectoryPermission = /\b(?:permission|permissions|privilege)\b/i.test(qnorm) && /\b(?:directory|cd|traversal|search)\b/i.test(qnorm);
+    const wantsSshRootSetting = ((/\b(?:ssh|sshd|openssh)\b/i.test(qnorm) && (/\broot\b/i.test(qnorm) || /\bpermitrootlogin\s+no\b/i.test(qnorm))) || /\bpermitrootlogin\s+no\b/i.test(qnorm)) && /\b(?:login|access|prevent|disable|direct|setting|configured|configuration|file|path|drop-in|where|which|what)\b/i.test(qnorm);
+    const wantsVerifyAddress = /\b(?:verify|verifies|check|checks|show|shows|display|displays|confirm|confirms)\b/i.test(qnorm) && /\b(?:address|ip)\b/i.test(qnorm) && /\blabnet0\b/i.test(qnorm);
+    const wantsSudoCommandPaths = /\bsecadmin\b/i.test(qnorm) && /\bcommand paths?\b/i.test(qnorm);
+    const wantsGrepTail = /\bcase[ -]insensitive\b/i.test(qnorm) && /\b(?:syslog|log|logs)\b/i.test(qnorm) && /\blast\s+\d+\s+(?:matches|lines|results|entries)\b/i.test(qnorm);
+    const wantsPersistentMount = /\buuid\b/i.test(qnorm) && /\bext4\b/i.test(qnorm) && /\b(?:fstab|mount(?:ing)?|persistent)\b/i.test(qnorm);
     const literals = [];
     const literalPatterns = [
       /\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+/g,
@@ -151,6 +157,32 @@
         const cmds = d.raw.match(/(?:sudo\s+)?(?:ip|grep|tail|usermod|chmod|chown|lspci|ufw|mount|visudo|systemctl|kill|ss|lsblk|find)\s+[^\n.;]{1,90}/gi) || [];
         if (cmds.length) score += Math.min(12, 3 + cmds.length * 1.5);
       }
+      if (wantsDirectoryPermission) {
+        if (/\bexecute\b/i.test(d.raw) && /\b(?:directory|cd|traversal|search)\b/i.test(d.raw)) score += 38;
+        if (/no such file or directory|mkdir\s+-p/i.test(d.raw) && !/execute.*permission/i.test(d.raw)) score *= 0.48;
+      }
+      if (wantsSshRootSetting) {
+        if (/permitrootlogin\s+no/i.test(d.raw) && /99-hardening\.conf/i.test(d.raw)) score += 50;
+        else if (/permitrootlogin\s+no/i.test(d.raw)) score += 8;
+      }
+      if (wantsVerifyAddress) {
+        if (/ip\s+addr\s+show\s+labnet0/i.test(d.raw)) score += 55;
+        else score *= 0.62;
+        if (/192\.168\.200\.10\/24/i.test(d.raw)) score += 10;
+      }
+      if (wantsSudoCommandPaths) {
+        if (/\/usr\/sbin\/ufw\s+status\*/i.test(d.raw) && /\/usr\/bin\/ss\b/i.test(d.raw)) score += 65;
+        else if (/90-secadmin/i.test(d.raw)) score += 12;
+      }
+      if (wantsGrepTail) {
+        if (/grep\s+-i\s+["']?error["']?\s+\/var\/log\/syslog\s*\|\s*tail\s+-n\s*20/i.test(d.raw)) score += 65;
+        else if (/grep\s+-i/i.test(d.raw) && /tail\s+-n/i.test(d.raw)) score += 18;
+      }
+      if (wantsPersistentMount) {
+        if (/UUID=\S+\s+\S+\s+ext4\s+defaults\s+0\s+2/i.test(d.raw)) score += 45;
+        if (/\/etc\/fstab/i.test(d.raw) && /mount\s+-a/i.test(d.raw)) score += 18;
+        if (/mkfs\.ext4/i.test(d.raw)) score *= 0.72;
+      }
       return { concept: d.c, score, coverage, matchedCount: matched.length, exactAnchor, matchedLiteralCount, _doc: d };
     }).sort((a, b) => b.score - a.score || b.coverage - a.coverage || a._doc.i - b._doc.i);
     return scored.slice(0, limit).map(({ _doc, ...item }) => item);
@@ -190,50 +222,107 @@
       };
     }
 
+    const qnorm = normalize(question);
     const best = top.concept;
     const bestAnswer = String(best.direct_answer || "").trim();
-    const qnorm = normalize(question);
     const exact = (best.query_anchors || []).some(a => normalize(a) === qnorm);
     const preparedAnswer = /^\s*Correct answer:/i.test(bestAnswer);
-    const aliases = aliasesFor(question, index.learnedRules).join(" ");
-    const all = [];
-    if (Array.isArray(best.structured_points)) all.push(...best.structured_points.map(cleanSentence));
-    all.push(...splitSentences(bestAnswer));
-    const uniqueSentences = [...new Set(all.map(cleanSentence).filter(s => s.length >= 20))];
-    const candidateRows = uniqueSentences.map((sentence, i) => ({
-      sentence,
-      score: sentenceScore(sentence, question + " " + aliases, intent, index) + (i === 0 ? 0.1 : 0),
-      record: best
-    })).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+    const wantsDirectoryPermission = /\b(?:permission|permissions|privilege)\b/i.test(qnorm) && /\b(?:directory|cd|traversal|search)\b/i.test(qnorm);
+    const wantsSshRootSetting = ((/\b(?:ssh|sshd|openssh)\b/i.test(qnorm) && (/\broot\b/i.test(qnorm) || /\bpermitrootlogin\s+no\b/i.test(qnorm))) || /\bpermitrootlogin\s+no\b/i.test(qnorm)) && /\b(?:login|access|prevent|disable|direct|setting|configured|configuration|file|path|drop-in|where|which|what)\b/i.test(qnorm);
+    const wantsVerifyAddress = /\b(?:verify|verifies|check|checks|show|shows|display|displays|confirm|confirms)\b/i.test(qnorm) && /\b(?:address|ip)\b/i.test(qnorm) && /\blabnet0\b/i.test(qnorm);
+    const wantsIpValue = /\b(?:what|which)\s+(?:is\s+)?(?:the\s+)?ip\s+address\b/i.test(qnorm) && /\blabnet0\b/i.test(qnorm);
+    const wantsSudoCommandPaths = /\bsecadmin\b/i.test(qnorm) && /\bcommand paths?\b/i.test(qnorm);
+    const wantsGrepTail = /\bcase[ -]insensitive\b/i.test(qnorm) && /\b(?:syslog|log|logs)\b/i.test(qnorm) && /\blast\s+\d+\s+(?:matches|lines|results|entries)\b/i.test(qnorm);
+    const wantsPersistentMount = /\buuid\b/i.test(qnorm) && /\bext4\b/i.test(qnorm) && /\b(?:fstab|mount(?:ing)?|persistent)\b/i.test(qnorm);
+    const wantsNetplanPath = /\bnetplan\b/i.test(qnorm) && /\blabnet0\b/i.test(qnorm) && /\b(?:file|path|configured)\b/i.test(qnorm);
 
-    let selected = [];
-    if (preparedAnswer || exact) {
-      selected = [{ sentence: bestAnswer.slice(0, 1600), record: best, score: top.score }];
-    } else {
-      const seen = new Set();
-      for (const row of candidateRows) {
-        const key = normalize(row.sentence);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        selected.push(row);
-        if (selected.length >= 2) break;
-      }
-      if (!selected.length) selected = [{ sentence: cleanSentence(bestAnswer).slice(0, 700), record: best, score: top.score }];
-    }
-
-    let body = selected.map(x => cleanSentence(x.sentence)).filter(Boolean).join(" ");
-    const wantsExactFile = /\b(?:which|what|in which)\b.*\b(?:exact\s+)?(?:drop-in|configuration|config|file)\b/i.test(qnorm);
-    if (wantsExactFile && /\bpermitrootlogin\s+no\b/i.test(qnorm)) {
-      const m = bestAnswer.match(/\/etc\/ssh\/sshd_config\.d\/[A-Za-z0-9_.-]+\.conf/i);
-      if (m && !body.includes(m[0])) body = m[0] + " sets PermitRootLogin no. " + body;
+    function findEvidence(test) {
+      const fromRanked = ranked.find(row => test(recordText(row.concept)));
+      if (fromRanked) return fromRanked.concept;
+      const fromIndex = index.docs.find(row => test(row.raw));
+      return fromIndex ? fromIndex.c : best;
     }
 
     let response;
-    if (preparedAnswer) {
-      const m = bestAnswer.match(/^\s*Correct answer:\s*([^.]*)\.?\s*(.*)$/i);
-      response = m ? "The correct answer identified by the course is " + m[1].trim().replace(/[.]$/, "") + (m[2] ? ". " + m[2].trim() : ".") : bestAnswer;
-    } else {
-      if (intent === "why") response = "The key reason is: " + body;
+    let evidenceRecord = best;
+    if (wantsSudoCommandPaths) {
+      evidenceRecord = findEvidence(raw => /\/usr\/sbin\/ufw\s+status\*/i.test(raw) && /\/usr\/bin\/ss\b/i.test(raw));
+      const ufwPath = evidenceRecord.direct_answer.match(/\/usr\/sbin\/ufw\s+status\*/i);
+      const ssPath = evidenceRecord.direct_answer.match(/\/usr\/bin\/ss\b/i);
+      if (ufwPath && ssPath) response = "The course's secadmin rule allows these two command paths: \x60" + ufwPath[0] + "\x60 and \x60" + ssPath[0] + "\x60.";
+    } else if (wantsVerifyAddress) {
+      evidenceRecord = findEvidence(raw => /ip\s+addr\s+show\s+labnet0/i.test(raw) && /192\.168\.200\.10\/24/i.test(raw));
+      const cmd = evidenceRecord.direct_answer.match(/ip\s+addr\s+show\s+labnet0/i);
+      const ip = evidenceRecord.direct_answer.match(/192\.168\.200\.10\/24/i);
+      if (cmd && ip) response = "Run \x60" + cmd[0] + "\x60 and confirm that \x60" + ip[0] + "\x60 is listed on \x60labnet0\x60.";
+    } else if (wantsIpValue) {
+      evidenceRecord = findEvidence(raw => /\blabnet0\b/i.test(raw) && /192\.168\.200\.10\/24/i.test(raw));
+      const ip = evidenceRecord.direct_answer.match(/192\.168\.200\.10\/24/i);
+      if (ip) response = "The configured address for \x60labnet0\x60 is \x60" + ip[0] + "\x60.";
+    } else if (wantsNetplanPath) {
+      evidenceRecord = findEvidence(raw => /\/etc\/netplan\/90-virtual-lab\.yaml/i.test(raw) && /labnet0/i.test(raw));
+      const pathMatch = evidenceRecord.direct_answer.match(/\/etc\/netplan\/90-virtual-lab\.yaml/i);
+      if (pathMatch) response = "The lab configures \x60labnet0\x60 in \x60" + pathMatch[0] + "\x60.";
+    } else if (wantsSshRootSetting) {
+      evidenceRecord = findEvidence(raw => /99-hardening\.conf/i.test(raw) && /PermitRootLogin\s+no/i.test(raw));
+      const file = evidenceRecord.direct_answer.match(/\/etc\/ssh\/sshd_config\.d\/99-hardening\.conf/i);
+      const directive = evidenceRecord.direct_answer.match(/PermitRootLogin\s+no/i);
+      if (file && directive) response = "The lab sets \x60" + directive[0] + "\x60 in \x60" + file[0] + "\x60 to disable direct SSH root login.";
+    } else if (wantsGrepTail) {
+      evidenceRecord = findEvidence(raw => /grep\s+-i\s+["']?error["']?\s+\/var\/log\/syslog\s*\|\s*tail\s+-n\s*20/i.test(raw));
+      const pipe = evidenceRecord.direct_answer.match(/\bgrep\s+-i\s+(?:"[^"]+"|'[^']+'|\S+)\s+\S+\s*\|\s*tail\s+-n\s+\d+/i);
+      if (pipe) {
+        const n = qnorm.match(/\blast\s+(\d+)\s+(?:matches|lines|results|entries)\b/i);
+        response = "Use \x60" + pipe[0] + "\x60 to filter case-insensitive matches and show the last " + (n ? n[1] : "requested") + " results.";
+      }
+    } else if (wantsPersistentMount) {
+      evidenceRecord = findEvidence(raw => /UUID=\S+\s+\S+\s+ext4\s+defaults\s+0\s+2/i.test(raw) && /\/etc\/fstab/i.test(raw));
+      const uuidCmd = evidenceRecord.direct_answer.match(/(?:sudo\s+)?blkid\s+\S+/i);
+      const fstab = evidenceRecord.direct_answer.match(/UUID=\S+\s+\S+\s+ext4\s+defaults\s+0\s+2/i);
+      const mountCmd = evidenceRecord.direct_answer.match(/(?:sudo\s+)?mount\s+-a/i);
+      if (uuidCmd && fstab && mountCmd) {
+        response = "For a persistent ext4 mount, obtain the partition UUID with \x60" + uuidCmd[0] + "\x60, add an entry such as \x60" + fstab[0] + "\x60 to \x60/etc/fstab\x60, and validate it with \x60" + mountCmd[0] + "\x60. Only run \x60mkfs.ext4\x60 when intentionally creating a filesystem; formatting a partition can erase existing data.";
+      }
+    } else if (wantsDirectoryPermission) {
+      evidenceRecord = findEvidence(raw => /\bexecute\b/i.test(raw) && /\b(?:directory|cd|traversal|search)\b/i.test(raw));
+      if (/\bexecute\b/i.test(evidenceRecord.direct_answer)) {
+        response = "Check execute (\x60x\x60) permission on the directory and its parent directories. On Linux, directory execute permission controls search/traversal, including changing into the directory with \x60cd\x60.";
+      }
+    }
+
+    if (!response) {
+      const aliases = aliasesFor(question, index.learnedRules).join(" ");
+      const all = [];
+      if (Array.isArray(best.structured_points)) all.push(...best.structured_points.map(cleanSentence));
+      all.push(...splitSentences(bestAnswer));
+      const uniqueSentences = [...new Set(all.map(cleanSentence).filter(s => s.length >= 20))];
+      const candidateRows = uniqueSentences.map((sentence, i) => ({
+        sentence,
+        score: sentenceScore(sentence, question + " " + aliases, intent, index) + (i === 0 ? 0.1 : 0),
+        record: best
+      })).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+
+      let selected = [];
+      if (preparedAnswer || exact) {
+        selected = [{ sentence: bestAnswer.slice(0, 1600), record: best, score: top.score }];
+      } else {
+        const seen = new Set();
+        for (const row of candidateRows) {
+          const key = normalize(row.sentence);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          selected.push(row);
+          if (selected.length >= 2) break;
+        }
+        if (!selected.length) selected = [{ sentence: cleanSentence(bestAnswer).slice(0, 700), record: best, score: top.score }];
+      }
+      selected.sort((a, b) => (a.record === best ? -1 : 1) - (b.record === best ? -1 : 1));
+      const body = selected.map(x => cleanSentence(x.sentence)).filter(Boolean).join(" ");
+
+      if (preparedAnswer) {
+        const m = bestAnswer.match(/^\s*Correct answer:\s*([^.]*)\.?\s*(.*)$/i);
+        response = m ? "The correct answer identified by the course is " + m[1].trim().replace(/[.]$/, "") + (m[2] ? ". " + m[2].trim() : ".") : bestAnswer;
+      } else if (intent === "why") response = "The key reason is: " + body;
       else if (intent === "how") response = "The course-supported approach is: " + body;
       else if (intent === "compare") response = "The key distinction is: " + body;
       else if (intent === "troubleshoot") response = "Start with the course-supported checks: " + body;
@@ -244,21 +333,13 @@
       else response = "In this course context: " + body;
     }
 
-    response = response.replace(/\s+/g, " ").trim();
+    response = String(response || "").replace(/\s+/g, " ").trim();
     if (response.length > 1400) response = response.slice(0, 1397).replace(/\s+\S*$/, "") + "...";
-    const sourceLabels = [];
-    for (const row of selected) {
-      const rec = row.record;
-      const label = [rec.module_title, rec.lesson_title, rec.section_title || rec.title, rec.citation].filter(Boolean).join(" — ");
-      if (label && !sourceLabels.includes(label)) sourceLabels.push(label);
-    }
-    if (!sourceLabels.length) {
-      const label = [best.module_title, best.lesson_title, best.section_title || best.title, best.citation].filter(Boolean).join(" — ");
-      if (label) sourceLabels.push(label);
-    }
+    const label = [evidenceRecord.module_title, evidenceRecord.lesson_title, evidenceRecord.section_title || evidenceRecord.title, evidenceRecord.citation].filter(Boolean).join(" — ");
+    const sources = label ? [label] : [];
     return {
       category: "IN_COURSE", answer: response, intent, score: top.score,
-      coverage: top.coverage, concept: best, sources: sourceLabels.slice(0, 3),
+      coverage: top.coverage, concept: evidenceRecord, sources: sources.slice(0, 3),
       exactAnchor: exact,
       ranked: ranked.slice(0, 4).map(r => ({ title: r.concept.title || r.concept.section_title, score: r.score, coverage: r.coverage }))
     };

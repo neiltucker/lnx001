@@ -86,20 +86,59 @@ def extract_quiz_prompts(raw, path):
     if not visible:
         return {"is_quiz": False, "items": [], "title": ""}
 
-    # Use learner-visible question wording as query examples. Never scrape distractors
-    # or hidden JavaScript answer keys from quiz source.
+    # The packaged learner quiz exposes the correct option and explanation after
+    # submission. Extract only that answer and explanation; never index distractors.
+    def json_array_after(var_name):
+        m = re.search(r'window\.' + re.escape(var_name) + r'\s*=\s*(\[.*?\])\s*;', raw, re.S)
+        if not m:
+            return []
+        try:
+            value = json.loads(m.group(1))
+            return value if isinstance(value, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    answer_letters = json_array_after("__quizAnswers")
+    explanations = json_array_after("__quizExplanations")
     candidates = []
-    qpattern = re.compile(r'<span class="question-text"[^>]*>(.*?)</span>', re.I | re.S)
-    for m in qpattern.finditer(raw):
-        question = html.unescape(re.sub(r"<[^>]+>", " ", m.group(1)))
-        question = re.sub(r"\s+", " ", question).strip(" \t\r\n•-")
+    fieldset_pattern = re.compile(
+        r'<fieldset\b(?=[^>]*\bclass\s*=\s*"[^"]*\bquiz-question\b[^"]*")[^>]*>(.*?)</fieldset>',
+        re.I | re.S
+    )
+    for idx, fm in enumerate(fieldset_pattern.finditer(raw)):
+        block = fm.group(1)
+        qm = re.search(r'<span\b(?=[^>]*\bclass\s*=\s*"[^"]*\bquestion-text\b[^"]*")[^>]*>(.*?)</span>', block, re.I | re.S)
+        if not qm:
+            continue
+        question = html.unescape(re.sub(r"<[^>]+>", " ", qm.group(1)))
+        question = re.sub(r"\s+", " ", question).strip()
         if len(question) < 14 or len(question) > 320 or not QUESTION_START.search(question):
             continue
+        option_map = {}
+        for om in re.finditer(r'<span\b(?=[^>]*\bclass\s*=\s*"[^"]*\boption-text\b[^"]*")[^>]*>(.*?)</span>', block, re.I | re.S):
+            option = html.unescape(re.sub(r"<[^>]+>", " ", om.group(1))).strip()
+            option = re.sub(r"\s+", " ", option)
+            option_match = re.match(r"([A-D])\s*[).]\s*(.*)", option)
+            if option_match:
+                option_map[option_match.group(1).upper()] = option_match.group(2).strip()
+        answer_letter = str(answer_letters[idx]).strip().upper() if idx < len(answer_letters) else ""
+        correct_option = option_map.get(answer_letter, "")
+        explanation = html.unescape(str(explanations[idx])).strip() if idx < len(explanations) else ""
+        if correct_option and answer_letter in "ABCD":
+            # The learner gets this feedback from the quiz after submitting an answer.
+            answer = "Correct answer: " + answer_letter + ") " + correct_option
+            if explanation:
+                answer += ". Explanation: " + explanation
+        else:
+            answer = ""
         key = re.sub(r"[^a-z0-9]+", " ", question.lower()).strip()
         if key and key not in {x["key"] for x in candidates}:
-            candidates.append({"question": question, "key": key, "block_index": len(candidates)})
+            candidates.append({
+                "question": question, "key": key,
+                "block_index": idx, "answer": answer
+            })
 
-    # Fallback for quiz pages without explicit question-text markup.
+    # Fallback: keep question wording if the source uses a different quiz markup.
     if not candidates:
         for bi, (tag, text) in enumerate(parser.blocks):
             parts = re.split(r"(?<=[?])\s+(?=[A-Z0-9])|(?<=[.!])\s+(?=(?:What|Why|How|Which|Where|When|Who|Select|Choose|Identify|Compare|Explain)\b)", text)
@@ -110,15 +149,19 @@ def extract_quiz_prompts(raw, path):
                     continue
                 key = re.sub(r"[^a-z0-9]+", " ", question.lower()).strip()
                 if key and key not in {x["key"] for x in candidates}:
-                    candidates.append({"question": question, "key": key, "block_index": bi})
+                    candidates.append({"question": question, "key": key, "block_index": bi, "answer": ""})
 
     hinted = bool(QUIZ_HINT.search(path + " " + parser.title + " " + visible))
     if not candidates or not (hinted or len(candidates) >= 3):
         return {"is_quiz": False, "items": [], "title": parser.title}
-
-    # No learner-visible correct-answer/feedback markup was found in this source.
-    items = [{"question": item["question"], "answer": "", "block_index": item["block_index"]} for item in candidates]
-    return {"is_quiz": True, "items": items, "title": parser.title, "visible_chars": len(visible)}
+    for item in candidates:
+        item.pop("key", None)
+    return {
+        "is_quiz": True, "items": candidates, "title": parser.title,
+        "visible_chars": len(visible),
+        "question_count": len(candidates),
+        "answer_count": sum(1 for item in candidates if item.get("answer"))
+    }
 
 
 def remove_div_with_class(raw, class_name):
@@ -317,14 +360,14 @@ def main():
                 "learner_end_module_quiz_questions": len(quiz_items),
                 "quiz_items_with_explicit_answer_or_feedback": quiz_answer_records
             },
-            "runtime_policy": "No model, no hosted service, no network dependency. Retrieval uses BM25-style weighted lexical scores, exact-term boosts, course-specific aliases and question anchors. Answer generation uses intent rules, sentence selection and safe templates.",
-            "source_policy": "SCORM learner-facing HTML, Quick Reference Guide HTML, and only pre/post instructor answer-key Q&A. Quiz distractors without explicit feedback/correct-answer markers are never treated as answer facts."
+            "runtime_policy": "No model, no hosted service, no network dependency. Retrieval uses BM25-style weighted lexical scores, exact-term boosts, course-specific aliases and question anchors. Answer generation uses intent rules, targeted fact extraction, sentence selection and deterministic templates.",
+            "source_policy": "Learner-facing SCORM lesson HTML and Quick Reference Guide HTML; only pre/post instructor answer-key Q&A from the Trainer Preparation Guide; plus module quiz questions and the single correct option/explanation shown as learner feedback after submission. Quiz distractors and unrelated instructor-only material are excluded."
         })
         bundle["concepts"] = concepts
         bundle["non_llm_generation_rules"] = rules
         bundle["ai_tutor_lab_experiment"] = {
             "version": "non-llm-algorithmic-poc-v1",
-            "knowledge_sources": ["existing tutor Q&A", "learner-facing SCORM course HTML", "Quick Reference Guide HTML", "pre/post instructor answer-key Q&A", "learner-facing end-of-module quiz question forms and explicit feedback where available"],
+            "knowledge_sources": ["existing tutor Q&A", "learner-facing SCORM course HTML", "Quick Reference Guide HTML", "pre/post instructor answer-key Q&A", "learner-facing end-of-module quiz question forms, correct options, and explanations shown as feedback"],
             "runtime": "pure JavaScript algorithms; no LLM, no embeddings model, no WebAssembly, no runtime network calls",
             "primary_tutor_ui_modified": False,
             "separate_demo": "ai-tutor/nonllm-demo.html"

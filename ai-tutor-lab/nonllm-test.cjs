@@ -24,6 +24,9 @@ const tests = [
   {id:'course-fstab-fields',q:'What six fields go into an /etc/fstab entry for a UUID-based ext4 mount?',all:[/UUID/i,/Mount Point/i,/Filesystem Type/i,/Mount Options/i]},
   {id:'course-yaml-troubleshooting',q:'How should I fix a YAML parsing error in the lab Netplan configuration?',all:[/tab/i,/spaces/i,/90-virtual-lab\.yaml/i]},
   {id:'course-ssh-root-config',q:'In which exact drop-in file does the lab set PermitRootLogin no?',all:[/PermitRootLogin no/i,/99-hardening\.conf/i]},
+  {id:'quiz-m04-network-interfaces',group:'learner-quiz-answer',q:'Which modern command displays all network interfaces, their assigned IP addresses, and their current link state on Ubuntu 24?',any:[/ip addr show/i]},
+  {id:'quiz-m04-netplan-yaml',group:'learner-quiz-answer',q:'What is the primary formatting requirement when configuring Netplan YAML files in /etc/netplan/?',all:[/spaces/i,/\btabs?\b/i]},
+  {id:'quiz-m03-block-devices',group:'learner-quiz-answer',q:'Which Linux command lists block devices, including hard drives, partitions, and virtual disks in a tree-like format?',any:[/lsblk/i]},
   {id:'out-of-scope-brakes',q:'How do I replace brake pads on a 2026 Honda Accord?',outside:true},
   {id:'paraphrase-directory-cd',q:'If a user cannot cd into a directory, which directory permission should I check?',any:[/execute/i,/search|travers/i]},
   {id:'paraphrase-append-output',q:'How can command output be added to an existing log file rather than overwriting it?',any:[/>>/]},
@@ -60,7 +63,7 @@ function main(){
     try{newResult=NLT.answer(t.q,index)}catch(e){cError=String(e)}
     const b=oldResult?check(oldResult,t):{pass:false,category:'TEST_ERROR',answer:'',matchedPatterns:[]};
     const c=newResult?check(newResult,t):{pass:false,category:'TEST_ERROR',answer:'',matchedPatterns:[]};
-    results.push({id:t.id,question:t.q,outside:!!t.outside,baseline_pass:b.pass,candidate_pass:c.pass,
+    results.push({id:t.id,group:t.group||'core-benchmark',question:t.q,outside:!!t.outside,baseline_pass:b.pass,candidate_pass:c.pass,
       change:!b.pass&&c.pass?'improved':b.pass&&!c.pass?'regressed':b.pass&&c.pass?'both-pass':'both-fail',
       baseline_category:b.category,candidate_category:c.category,baseline_answer:b.answer.slice(0,850),candidate_answer:c.answer.slice(0,1100),
       candidate_intent:newResult&&newResult.intent,candidate_score:newResult&&newResult.score,candidate_coverage:newResult&&newResult.coverage,
@@ -68,10 +71,18 @@ function main(){
       errors:{baseline:bError,candidate:cError}});
   }
   const baselinePass=results.filter(x=>x.baseline_pass).length,candidatePass=results.filter(x=>x.candidate_pass).length;
+  const groupSummary = {};
+  for (const row of results) {
+    const name = row.group || "core-benchmark";
+    if (!groupSummary[name]) groupSummary[name] = { count: 0, baseline_pass: 0, candidate_pass: 0 };
+    groupSummary[name].count++;
+    if (row.baseline_pass) groupSummary[name].baseline_pass++;
+    if (row.candidate_pass) groupSummary[name].candidate_pass++;
+  }
   const result={experiment:'non-llm-algorithmic-poc-v1',test_count:results.length,index_record_count:index.recordCount,
     baseline_pass_count:baselinePass,candidate_pass_count:candidatePass,improved:results.filter(x=>x.change==='improved').length,
     regressed:results.filter(x=>x.change==='regressed').length,both_pass:results.filter(x=>x.change==='both-pass').length,
-    both_fail:results.filter(x=>x.change==='both-fail').length,out_of_scope_tests:results.filter(x=>x.outside).length,
+    both_fail:results.filter(x=>x.change==='both-fail').length,out_of_scope_tests:results.filter(x=>x.outside).length,group_summary:groupSummary,
     intent_counts:results.reduce((o,x)=>{const k=x.candidate_intent||'error';o[k]=(o[k]||0)+1;return o;},{}),results};
   fs.writeFileSync(path.join(ROOT,'ai-tutor-lab','nonllm-results.json'),JSON.stringify(result,null,2));
   const summary=JSON.parse(fs.readFileSync(path.join(ROOT,'ai-tutor-lab','nonllm-build-summary.json'),'utf8'));
@@ -94,11 +105,15 @@ function main(){
     '| Derived question-stem rules | '+summary.question_stem_rules+' |','| Additional model bytes | 0 |','',
     '## Fixed retrieval-and-answer benchmark','',
     'Baseline: **'+baselinePass+'/'+results.length+'**; no-LLM candidate: **'+candidatePass+'/'+results.length+'**; improved: **'+result.improved+'**; regressed: **'+result.regressed+'**.','',
-    '| Test | Baseline | No-LLM | Change | Intent | Top concept |','|---|---|---|---|---|---|'
+    '### Result by test group','',
+    '| Group | Questions | Baseline pass | Candidate pass |','|---|---:|---:|---:|',
+    ...Object.entries(groupSummary).map(([name,g])=>'| '+name+' | '+g.count+' | '+g.baseline_pass+' | '+g.candidate_pass+' |'),
+    '',
+    '| Test | Group | Baseline | No-LLM | Change | Intent | Top concept |','|---|---|---|---|---|---|---|'
   ];
   for(const x of results){
     const title=x.candidate_ranked&&x.candidate_ranked[0]&&x.candidate_ranked[0].title||'';
-    md.push('| '+x.id+' | '+(x.baseline_pass?'PASS':'FAIL')+' | '+(x.candidate_pass?'PASS':'FAIL')+' | '+x.change+' | '+(x.candidate_intent||'')+' | '+String(title).replace(/\|/g,'\\|').replace(/\r?\n/g,' ')+' |');
+    md.push('| '+x.id+' | '+(x.group||'core-benchmark')+' | '+(x.baseline_pass?'PASS':'FAIL')+' | '+(x.candidate_pass?'PASS':'FAIL')+' | '+x.change+' | '+(x.candidate_intent||'')+' | '+String(title).replace(/\|/g,'\\|').replace(/\r?\n/g,' ')+' |');
   }
   md.push('','## Per-question outputs','');
   for(const x of results){
@@ -111,7 +126,7 @@ function main(){
   fs.writeFileSync(path.join(ROOT,'ai-tutor-lab','NONLLM_EXPERIMENT_REPORT.md'),md.join('\n'));
   console.log(JSON.stringify({test_count:result.test_count,index_record_count:result.index_record_count,
     baseline_pass_count:result.baseline_pass_count,candidate_pass_count:result.candidate_pass_count,improved:result.improved,
-    regressed:result.regressed,both_fail:result.both_fail,intent_counts:result.intent_counts,
+    regressed:result.regressed,both_fail:result.both_fail,group_summary:result.group_summary,intent_counts:result.intent_counts,
     quiz_pages_detected:summary.module_quiz_sources_detected,quiz_questions_detected:summary.module_quiz_questions_detected},null,2));
 }
 main();
