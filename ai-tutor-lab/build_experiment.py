@@ -107,10 +107,13 @@ def parse_bundle(js):
     eq=js.find("=",at+len(marker));semi=js.rfind(";")
     return json.loads(js[eq+1:semi if semi>eq else None].strip())
 def assessment_records(guide):
-    a=re.search(r"Pre-Assessment\s*[—–-]\s*Instructor Answer Key",guide,re.I)
-    b=re.search(r"Post-Assessment\s*[—–-]\s*Student Handout",guide,re.I)
-    c=re.search(r"Post-Assessment\s*[—–-]\s*Instructor Answer Key",guide,re.I)
-    if not(a and b and c):raise ValueError("Missing expected instructor answer-key headings in trainer guide")
+    normalized=guide.replace("\\u00a0"," ").replace("\\u2014","-").replace("\\u2013","-")
+    a=re.search(r"Pre-Assessment\\s*-\\s*Instructor Answer Key",normalized,re.I)
+    b=re.search(r"Post-Assessment\\s*-\\s*Student Handout",normalized,re.I)
+    c=re.search(r"Post-Assessment\\s*-\\s*Instructor Answer Key",normalized,re.I)
+    if not(a and b and c):
+        raise ValueError("Missing expected instructor answer-key headings: pre="+str(bool(a))+", post-student="+str(bool(b))+", post-key="+str(bool(c)))
+    guide=normalized
     ret=[]
     for kind,s in (("pre",guide[a.end():b.start()]),("post",guide[c.end():])):
         ms=list(re.finditer(r"(?m)^\s*(\d{1,2})\.\s+",s))
