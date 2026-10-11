@@ -60,27 +60,95 @@
     return "explain";
   }
   function recordText(c) {
-    return [c.title, c.section_title, c.lesson_title, c.module_title, c.direct_answer, (c.keywords || []).join(" "), (c.query_anchors || []).join(" "), (c.structured_points || []).join(" "), (c.source_references || []).join(" ")].filter(Boolean).join(" ");
+    return [c.title, c.section_title, c.lesson_title, c.module_title, c.curriculum_search_text,
+      c.direct_answer, (c.keywords || []).join(" "), (c.query_anchors || []).join(" "),
+      (c.structured_points || []).join(" "), (c.source_references || []).join(" ")].filter(Boolean).join(" ");
   }
-  function createIndex(concepts, learnedRules) {
+  function compileQueryPlan(question) {
+    const raw = String(question || "");
+    const normalized = normalize(raw);
+    const exactPhrases = [...raw.matchAll(/"([^"]{2,180})"/g)].map(m => normalize(m[1])).filter(Boolean);
+    const literals = [];
+    const patterns = [
+      /\\/(?:[A-Za-z0-9_.-]+\\/)*[A-Za-z0-9_.-]+/g,
+      /\\b[A-Za-z][A-Za-z0-9_.-]*\\.(?:conf|yaml|yml|json|ini|service|log)\\b/ig,
+      /\\b[A-Z][A-Z0-9_]{1,}(?:-[A-Z0-9]+)*\\b/g,
+      /\\bPermitRootLogin\\s+no\\b/ig,
+      /\\b\\d{1,3}(?:\\.\\d{1,3}){3}(?:\\/\\d{1,2})?\\b/g
+    ];
+    for (const pattern of patterns) for (const match of raw.matchAll(pattern)) literals.push(normalize(match[0]));
+    const uniqueLiterals = [...new Set(literals.filter(Boolean))];
+    const fieldHints = [];
+    if (/\\b(?:command|command line|which command|what command)\\b/i.test(raw)) fieldHints.push("commands");
+    if (/\\b(?:file|path|configuration|directive|setting)\\b/i.test(raw)) fieldHints.push("paths-and-configuration");
+    if (/\\b(?:why|reason|purpose|because)\\b/i.test(raw)) fieldHints.push("explanations");
+    if (/\\b(?:how|steps|procedure|workflow)\\b/i.test(raw)) fieldHints.push("procedures");
+    if (/\\b(?:objective|objectives|learning outcome|learning outcomes)\\b/i.test(raw)) fieldHints.push("curriculum-objectives");
+    return { normalized, intent: classifyIntent(raw), terms: tokenize(raw), exactPhrases,
+      literals: uniqueLiterals, fieldHints, parser: "safe-lucene-inspired-query-plan-v1" };
+  }
+  function curriculumNodeTypeWeight(node) {
+    const kind = String(node && node.node_type || "");
+    return kind === "lesson_topic" ? 1.0 :
+      kind === "module_topic" ? 0.88 :
+      kind === "module_objective" ? 0.74 :
+      kind === "course_objective" ? 0.62 : kind === "module" ? 0.42 : 0.30;
+  }
+  function curriculumMatches(question, index, limit) {
+    const q = tokenize(question);
+    if (!q.length || !index || !Array.isArray(index.curriculumDocs)) return [];
+    const qWeights = Object.create(null);
+    let qNorm = 0;
+    for (const term of q) {
+      const weight = 1 + (index.idf[term] || 0);
+      qWeights[term] = weight;
+      qNorm += weight * weight;
+    }
+    const scored = index.curriculumDocs.map(d => {
+      let dot = 0, dNorm = 0, overlap = 0;
+      for (const term of d.terms) {
+        const weight = 1 + (index.idf[term] || 0);
+        dNorm += weight * weight;
+        if (qWeights[term]) { dot += qWeights[term] * weight; overlap++; }
+      }
+      const sim = qNorm > 0 && dNorm > 0 ? dot / Math.sqrt(qNorm * dNorm) : 0;
+      const importance = Number(d.node.importance_weight || d.node.importance_score || 0.6);
+      return { node: d.node, similarity: sim, overlap, importance,
+        relevance: sim * curriculumNodeTypeWeight(d.node) * (0.75 + 0.25 * importance) };
+    }).filter(x => x.overlap > 0 && x.similarity >= 0.035)
+      .sort((a,b) => b.relevance-a.relevance || b.similarity-a.similarity);
+    return scored.slice(0, Math.max(1, limit || 8));
+  }
+  function createIndex(concepts, learnedRules, curriculumStructure) {
     const records = Array.isArray(concepts) ? concepts : [];
     const docs = records.map((c, i) => {
       const title = tokenize([c.title, c.section_title, c.lesson_title, c.module_title].filter(Boolean).join(" "));
       const keywords = tokenize((c.keywords || []).join(" "));
       const anchors = tokenize((c.query_anchors || []).join(" "));
+      const curriculum = tokenize(c.curriculum_search_text || "");
       const body = tokenize([c.direct_answer, ...(c.structured_points || [])].filter(Boolean).join(" "));
       const tf = Object.create(null);
       const add = (list, weight) => list.forEach(t => { tf[t] = (tf[t] || 0) + weight; });
-      add(body, 1); add(keywords, 1.5); add(title, 2.7); add(anchors, 3.6);
-      const length = body.length + keywords.length * 1.5 + title.length * 2.7 + anchors.length * 3.6;
-      return { c, i, tf, length, titleSet: new Set(title), keywordSet: new Set(keywords), anchorSet: new Set(anchors), raw: recordText(c), anchorsRaw: (c.query_anchors || []).map(normalize) };
+      add(body, 1); add(keywords, 1.5); add(title, 2.7); add(anchors, 3.6); add(curriculum, 0.38);
+      const length = body.length + keywords.length * 1.5 + title.length * 2.7 + anchors.length * 3.6 + curriculum.length * 0.38;
+      return { c, i, tf, length, titleSet: new Set(title), keywordSet: new Set(keywords), anchorSet: new Set(anchors),
+        curriculumSet: new Set(curriculum), raw: recordText(c), anchorsRaw: (c.query_anchors || []).map(normalize) };
     });
     const df = Object.create(null);
     for (const d of docs) for (const term of Object.keys(d.tf)) df[term] = (df[term] || 0) + 1;
     const avgLength = docs.reduce((n, d) => n + d.length, 0) / Math.max(1, docs.length);
     const idf = Object.create(null);
     for (const term of Object.keys(df)) idf[term] = Math.log(1 + (docs.length - df[term] + 0.5) / (df[term] + 0.5));
-    return { docs, df, idf, avgLength, learnedRules: learnedRules || {}, recordCount: docs.length };
+    const structure = curriculumStructure || (learnedRules && learnedRules.curriculum_structure) || {};
+    const curriculumNodes = Array.isArray(structure.nodes) ? structure.nodes :
+      [].concat(structure.course_objectives || [], structure.module_objectives || [], structure.module_topics || [], structure.lesson_topics || []);
+    const curriculumDocs = curriculumNodes.map(node => {
+      const terms = [...new Set(tokenize([node.title, node.statement, node.description,
+        Object.keys(node.term_vector || {}).join(" ")].filter(Boolean).join(" ")))];
+      return { node, terms, termSet: new Set(terms) };
+    });
+    return { docs, df, idf, avgLength, learnedRules: learnedRules || {}, curriculumStructure: structure,
+      curriculumDocs, recordCount: docs.length };
   }
   function rank(question, index, options) {
     const limit = Math.max(1, Math.min(8, options && options.topK || 6));
@@ -89,6 +157,9 @@
     if (!originalTerms.length) return [];
     const aliasTerms = tokenize(aliasesFor(question, index.learnedRules).join(" "));
     const allTerms = [...new Set(originalTerms.concat(aliasTerms))];
+    const queryPlan = compileQueryPlan(question);
+    const curriculumHits = curriculumMatches(question, index, 10);
+    const curriculumScoreById = new Map(curriculumHits.map(hit => [String(hit.node.id), hit]));
     const qnorm = normalize(question), qwords = new Set(originalTerms);
     const wantsIpValue = /\b(?:what|which)\s+(?:is\s+)?(?:the\s+)?ip\s+address\b/i.test(qnorm) || /\bconfigured\s+address\b/i.test(qnorm);
     const wantsExactFile = /\b(?:which|what|in which)\b.*\b(?:exact\s+)?(?:drop-in|configuration|config|file)\b/i.test(qnorm);
@@ -112,6 +183,13 @@
     for (const rx of literalPatterns) for (const m of qnorm.matchAll(rx)) literals.push(normalize(m[0]));
     const scored = index.docs.map(d => {
       let score = 0;
+      const recordNodeIds = new Set([...(d.c.curriculum_node_ids || []), ...(d.c.course_objective_ids || []),
+        ...(d.c.module_objective_ids || []), ...(d.c.module_topic_ids || []), ...(d.c.lesson_topic_ids || [])].map(String));
+      let curriculumAffinity = 0;
+      for (const [nodeId, hit] of curriculumScoreById) {
+        if (!recordNodeIds.has(nodeId)) continue;
+        curriculumAffinity = Math.max(curriculumAffinity, hit.relevance);
+      }
       const rawNorm = normalize(d.raw);
       for (const term of allTerms) {
         const f = d.tf[term] || 0;
@@ -138,6 +216,10 @@
       const coverage = matched.length / Math.max(1, meaningful.length);
       const expandedCoverage = allTerms.filter(t => d.tf[t]).length / Math.max(1, allTerms.length);
       score *= 0.25 + 0.75 * Math.sqrt(Math.max(0, coverage));
+      // Curriculum importance only adjusts records that have topical evidence; it never
+      // promotes a globally important but unrelated topic above a direct answer.
+      const importance = Math.max(0, Math.min(1, Number(d.c.importance_score || 0.6)));
+      if (score > 0) score *= 1 + Math.min(0.14, curriculumAffinity * 0.16 + Math.max(0, importance - 0.5) * 0.045);
       if (aliasTerms.length && expandedCoverage > 0.2) score *= 1 + Math.min(0.25, expandedCoverage * 0.12);
       if (wantsIpValue) {
         if (/\b\d{1,3}(?:\.\d{1,3}){3}(?:\/\d{1,2})?\b/.test(d.raw)) score += 22;
@@ -183,9 +265,29 @@
         if (/\/etc\/fstab/i.test(d.raw) && /mount\s+-a/i.test(d.raw)) score += 18;
         if (/mkfs\.ext4/i.test(d.raw)) score *= 0.72;
       }
-      return { concept: d.c, score, coverage, matchedCount: matched.length, exactAnchor, matchedLiteralCount, _doc: d };
-    }).sort((a, b) => b.score - a.score || b.coverage - a.coverage || a._doc.i - b._doc.i);
-    return scored.slice(0, limit).map(({ _doc, ...item }) => item);
+      const matchedExactPhrase = queryPlan.exactPhrases.some(phrase => phrase && rawNorm.includes(phrase));
+      const exactTier = matchedExactPhrase ? 2 : (matchedLiteralCount > 0 ? 1 : 0);
+      return { concept: d.c, score, coverage, matchedCount: matched.length, exactAnchor, matchedLiteralCount,
+        curriculumAffinity, importanceScore: importance, importanceTier: d.c.importance_tier || null,
+        exactTier, _doc: d };
+    });
+    const lexicalOrdered = scored.slice().sort((a,b) => b.score-a.score || b.coverage-a.coverage || a._doc.i-b._doc.i);
+    const lexicalRanks = new Map(lexicalOrdered.map((x,i) => [x, i+1]));
+    const curriculumOrdered = scored.filter(x => x.score > 0 && x.curriculumAffinity > 0)
+      .sort((a,b) => b.curriculumAffinity*(0.75+b.importanceScore*0.25)-a.curriculumAffinity*(0.75+a.importanceScore*0.25) || b.score-a.score);
+    const curriculumRanks = new Map(curriculumOrdered.map((x,i) => [x, i+1]));
+    for (const item of scored) {
+      const lexicalRank = lexicalRanks.get(item) || scored.length;
+      const curriculumRank = curriculumRanks.get(item);
+      // RRF fuses independent lexical and curriculum-related rankings; exact literals
+      // retain priority as a technical correctness guardrail.
+      item.rrfScore = 1/(60+lexicalRank) + (curriculumRank ? 0.35/(60+curriculumRank) : 0);
+      item.lexicalRank = lexicalRank;
+      item.curriculumRank = curriculumRank || null;
+    }
+    return scored.sort((a,b) => b.exactTier-a.exactTier || b.rrfScore-a.rrfScore ||
+      b.score-a.score || b.coverage-a.coverage || a._doc.i-b._doc.i)
+      .slice(0,limit).map(({ _doc, ...item }) => item);
   }
   function splitSentences(text) {
     const source = String(text || "").replace(/\r/g, "\n").replace(/[ \t]+/g, " ").trim();
@@ -209,6 +311,8 @@
   function cleanSentence(s) { return String(s || "").replace(/\s+/g, " ").replace(/^[\s•*-]+/, "").trim(); }
   function answer(question, index, options) {
     const intent = classifyIntent(question, index && index.learnedRules);
+    const queryPlan = compileQueryPlan(question);
+    const curriculumHits = curriculumMatches(question, index, 8);
     const ranked = rank(question, index, { topK: options && options.topK || 6 });
     const top = ranked[0];
     const originalTerms = tokenize(question);
@@ -218,7 +322,8 @@
         category: "OUT_OF_COURSE",
         answer: "I could not find enough relevant evidence in this course to answer confidently. Try using the course's technical terms or name the command, file, or lesson you are asking about.",
         intent, score: top ? top.score : 0, coverage: top ? top.coverage : 0, concept: null, sources: [],
-        ranked: ranked.slice(0, 3).map(r => ({ title: r.concept.title || r.concept.section_title, score: r.score, coverage: r.coverage }))
+        queryPlan, curriculumMatches: curriculumHits.map(x => ({id:x.node.id, type:x.node.node_type, title:x.node.title, similarity:x.similarity, relevance:x.relevance})),
+        ranked: ranked.slice(0, 3).map(r => ({ title: r.concept.title || r.concept.section_title, score: r.score, coverage: r.coverage, rrfScore:r.rrfScore, importanceTier:r.importanceTier }))
       };
     }
 
@@ -358,9 +463,12 @@
     return {
       category: "IN_COURSE", answer: response, intent, score: top.score,
       coverage: top.coverage, concept: evidenceRecord, sources: sources.slice(0, 3),
-      exactAnchor: exact,
-      ranked: ranked.slice(0, 4).map(r => ({ title: r.concept.title || r.concept.section_title, score: r.score, coverage: r.coverage }))
+      exactAnchor: exact, queryPlan,
+      curriculumMatches: curriculumHits.map(x => ({id:x.node.id, type:x.node.node_type, title:x.node.title, similarity:x.similarity, relevance:x.relevance})),
+      ranked: ranked.slice(0, 4).map(r => ({ title: r.concept.title || r.concept.section_title, score: r.score, coverage: r.coverage,
+        rrfScore:r.rrfScore, lexicalRank:r.lexicalRank, curriculumRank:r.curriculumRank, curriculumAffinity:r.curriculumAffinity,
+        importanceScore:r.importanceScore, importanceTier:r.importanceTier }))
     };
   }
-  return { normalize, tokenize, classifyIntent, createIndex, rank, answer, ALIAS_GROUPS };
+  return { normalize, tokenize, classifyIntent, compileQueryPlan, curriculumMatches, createIndex, rank, answer, ALIAS_GROUPS };
 });

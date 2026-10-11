@@ -9,6 +9,9 @@ on:
       - 'ai-tutor-lab/nonllm-tutor.js'
       - 'ai-tutor-lab/nonllm-test.cjs'
       - 'ai-tutor-lab/nonllm-demo.html'
+      - 'ai-tutor-lab/curriculum-enrichment.py'
+      - 'ai-tutor-lab/curriculum-image-content.json'
+      - 'ai-tutor-lab/nonllm-tutor-v1-baseline.js'
       - '.github/workflows/nonllm-ai-tutor-lab.yml'
       - 'ai-tutor-lab/build_experiment.py'
       - 'LNX-001_EN_SCORM2004.zip'
@@ -21,7 +24,7 @@ permissions:
 jobs:
   algorithmic-no-llm:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     steps:
       - name: Check out isolated experiment branch
         uses: actions/checkout@v4
@@ -33,19 +36,30 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Build expanded course index and model-free SCORM candidate
+      - name: Install PDF text extractor for supplementary-source audit
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - name: Validate experiment scripts
+        run: python -m py_compile ai-tutor-lab/nonllm-experiment.py ai-tutor-lab/curriculum-enrichment.py
+      - name: Build first-stage model-free SCORM candidate
         run: python ai-tutor-lab/nonllm-experiment.py
-      - name: Run baseline-versus-no-LLM retrieval and answer tests
+      - name: Enrich course content and build curriculum graph candidate
+        run: python ai-tutor-lab/curriculum-enrichment.py
+      - name: Run original baseline, prior no-LLM, and curriculum v2 comparisons
         run: node ai-tutor-lab/nonllm-test.cjs
       - name: Upload candidate SCORM and experiment reports
         uses: actions/upload-artifact@v4
         with:
-          name: lnx001-ai-tutor-nonllm-algorithmic-v1
+          name: lnx001-ai-tutor-nonllm-curriculum-v2
           path: |
             LNX-001_EN_SCORM2004.zip
             LNX-001_EN_SCORM2004_AI-TUTOR-LAB-NONLLM-V1.zip
+            LNX-001_EN_SCORM2004_AI-TUTOR-LAB-NONLLM-V2-CURRICULUM.zip
             ai-tutor-lab/nonllm-index.json
             ai-tutor-lab/nonllm-build-summary.json
+            ai-tutor-lab/curriculum-build-summary.json
+            ai-tutor-lab/source-coverage-audit.json
+            ai-tutor-lab/curriculum-objective-measurement.json
+            ai-tutor-lab/nonllm-index-v1-baseline.json
             ai-tutor-lab/nonllm-results.json
             ai-tutor-lab/NONLLM_EXPERIMENT_REPORT.md
           if-no-files-found: error

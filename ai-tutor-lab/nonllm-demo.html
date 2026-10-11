@@ -66,7 +66,7 @@
     const bundle = window.__CS_AI_TUTOR_DATA__;
     if (!bundle || !Array.isArray(bundle.concepts)) throw new Error("Course index is missing.");
     if (!window.CSNonLLMTutor) throw new Error("Algorithmic tutor script did not load.");
-    index = window.CSNonLLMTutor.createIndex(bundle.concepts, bundle.non_llm_generation_rules || {});
+    index = window.CSNonLLMTutor.createIndex(bundle.concepts, bundle.non_llm_generation_rules || {}, bundle.curriculum_structure || {});
     status.textContent = "Ready. Indexed " + index.recordCount + " course knowledge records. No model was loaded.";
   } catch (e) {
     status.textContent = "Could not initialize the demo: " + String(e && e.message || e);

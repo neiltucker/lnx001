@@ -1,0 +1,210 @@
+{
+  "version": "lnx001-figure-transcriptions-v1",
+  "method": "Human-reviewed transcriptions of visible text and instructional relationships in the 11 SCORM PNG diagrams; image alt descriptions are retained separately when found in module HTML.",
+  "images": [
+    {
+      "file": "m01_mod01_fig01.png",
+      "module_number": 1,
+      "title": "Linux Filesystem Hierarchy (FHS)",
+      "keywords": [
+        "filesystem hierarchy",
+        "root directory",
+        "absolute path",
+        "relative path",
+        "cd ..",
+        "/etc",
+        "/home",
+        "/root",
+        "/var",
+        "/usr",
+        "/usr/bin",
+        "/etc/netplan"
+      ],
+      "transcript": "All files and directories are organized under a single root directory /. The diagram shows /etc for system configuration, /home for user directories, /root for the root administrator's home, /var for variable logs and data, /usr for user software and binaries, and /usr/bin for user binaries such as system utilities. An absolute path starts at / and gives the complete path; example: /etc/netplan. A relative path is interpreted from the current directory. The command cd .. moves up one level; example: from /var/log to /var.",
+      "scope": "Instructional diagram; its paths are examples."
+    },
+    {
+      "file": "m01_mod01_fig02.png",
+      "module_number": 1,
+      "title": "Standard streams, pipelines, and redirection",
+      "keywords": [
+        "stdin",
+        "stdout",
+        "stderr",
+        "file descriptor 0",
+        "file descriptor 1",
+        "file descriptor 2",
+        "cat /var/log/syslog",
+        "grep -i error",
+        "2>",
+        "errors.log",
+        "incident_report.txt",
+        ">>"
+      ],
+      "transcript": "The diagram labels standard input as stdin (file descriptor 0), standard output as stdout (file descriptor 1), and standard error as stderr (file descriptor 2). The example command cat /var/log/syslog sends stdout to grep -i error. The stderr stream is redirected with 2> to errors.log. The filtered output is appended with >> to incident_report.txt. The figure illustrates the separation of stderr from the stdout pipeline.",
+      "scope": "Instructional command-flow diagram."
+    },
+    {
+      "file": "m02_mod02_fig01.png",
+      "module_number": 2,
+      "title": "Linux user identity files and numeric IDs",
+      "keywords": [
+        "/etc/passwd",
+        "/etc/shadow",
+        "/etc/group",
+        "UID",
+        "GID",
+        "user identity",
+        "encrypted password hash",
+        "group membership",
+        "arivera"
+      ],
+      "transcript": "The example user account is arivera. The /etc/passwd row illustrates fields: username arivera, password placeholder x, UID 1001, primary GID 1001, GECOS user information Alex Rivera, home directory /home/arivera, and login shell /bin/bash. The restricted /etc/shadow file contains an encrypted password hash and account-aging values. The /etc/group example developers:x:1002:arivera illustrates group name, password placeholder, GID 1002, and member list. The kernel identity-resolution mechanism uses numerical identifiers, shown as UID 1001 and GIDs 1001 and 1002. Values are illustrative examples, not real credentials.",
+      "scope": "Instructional diagram; identifiers and account values are illustrative."
+    },
+    {
+      "file": "m02_mod02_fig02.png",
+      "module_number": 2,
+      "title": "POSIX permission-string anatomy and file-versus-directory permissions",
+      "keywords": [
+        "-rwxr-xr--",
+        "permission string",
+        "read",
+        "write",
+        "execute",
+        "directories",
+        "regular files",
+        "directory traversal",
+        "cd",
+        "ls"
+      ],
+      "transcript": "The example permission string is -rwxr-xr--. The leading - denotes a regular file. User owner permissions are rwx; group owner permissions are r-x; other-user permissions are r--. For regular files, read allows viewing contents, write allows modifying contents, and execute allows running a program or binary script. For directories, read allows listing entry names (for example with ls), write allows creating, renaming, or deleting files within the directory, and execute allows entering the directory (for example with cd) and traversing it to access nested items.",
+      "scope": "Instructional permission diagram; example mode string."
+    },
+    {
+      "file": "m02_mod02_fig03.png",
+      "module_number": 2,
+      "title": "Octal permission values and common access profiles",
+      "keywords": [
+        "octal permissions",
+        "read 4",
+        "write 2",
+        "execute 1",
+        "755",
+        "644",
+        "700",
+        "750",
+        "rwxr-xr-x",
+        "rw-r--r--",
+        "rwx------",
+        "rwxr-x---"
+      ],
+      "transcript": "Binary-to-octal mapping: read r = 4, write w = 2, execute x = 1. Combining values gives 7 = rwx (full access), 6 = rw- (read and write), 5 = r-x (read and execute), 4 = r-- (read only), and 0 = no permissions. Profiles shown: 755 = rwxr-xr-x, owner full access, group read and execute, other read and execute; 644 = rw-r--r--, owner read and write, group read only, other read only; 700 = rwx------, owner full access, group and other no access; 750 = rwxr-x---, owner full access, group read and execute, other no access. Octal digits apply to user, group, and other classes in that order.",
+      "scope": "Instructional permission diagram; example modes."
+    },
+    {
+      "file": "m03_mod03_fig01.png",
+      "module_number": 3,
+      "title": "Linux storage workflow: detect, partition, format",
+      "keywords": [
+        "lsblk",
+        "/dev/sdb",
+        "sudo fdisk /dev/sdb",
+        "/dev/sdb1",
+        "sudo mkfs.ext4 /dev/sdb1",
+        "block device",
+        "partition",
+        "ext4"
+      ],
+      "transcript": "The three stages are hardware detection, partitioning, and formatting. Stage 1 uses lsblk to inspect a 20 GB raw disk /dev/sdb with no partitions shown. Stage 2 uses sudo fdisk /dev/sdb; the illustrated fdisk interaction creates a primary partition /dev/sdb1, shown as a 20 GB partition. Stage 3 uses sudo mkfs.ext4 /dev/sdb1 to create an ext4 filesystem; the partition is then marked ready for mounting. Device names and sizes are illustrative and must be verified on the learner's system.",
+      "scope": "Instructional workflow diagram; device names, sizes, and command output are illustrative."
+    },
+    {
+      "file": "m03_mod03_fig02.png",
+      "module_number": 3,
+      "title": "Graceful and forced Linux process termination",
+      "keywords": [
+        "SIGTERM",
+        "SIGKILL",
+        "kill -15 4092",
+        "kill -9 4092",
+        "process cleanup",
+        "termination",
+        "process ID",
+        "PID 4092"
+      ],
+      "transcript": "Graceful termination uses kill -15 4092 (SIGTERM). It sends a termination request that the process can handle, allowing cleanup of resources and saving state before it exits. Forced termination uses kill -9 4092 (SIGKILL), which stops the process immediately at the kernel level without normal cleanup and can risk data loss or zombie-process complications. The figure's rule is to attempt SIGTERM (15) first and use SIGKILL (9) only as a last resort for an unresponsive process. PID 4092 is illustrative.",
+      "scope": "Instructional safety diagram; PID is an example."
+    },
+    {
+      "file": "m03_mod03_fig03.png",
+      "module_number": 3,
+      "title": "Anatomy of an /etc/fstab configuration entry",
+      "keywords": [
+        "/etc/fstab",
+        "UUID=1234-abcd",
+        "/mnt/data",
+        "ext4",
+        "defaults",
+        "dump flag",
+        "fsck pass",
+        "persistent mount"
+      ],
+      "transcript": "The example /etc/fstab row is UUID=1234-abcd /mnt/data ext4 defaults 0 2. Its six fields are: 1) filesystem identifier (here UUID=1234-abcd), 2) mount point directory (/mnt/data), 3) filesystem type (ext4), 4) mount options (defaults), 5) dump backup flag (0), and 6) fsck pass order (2). The entry illustrates persistent mounting by UUID to /mnt/data with ext4, default options, and backup/check settings. The UUID is an example.",
+      "scope": "Instructional diagram; UUID and mount point are illustrative."
+    },
+    {
+      "file": "m04_mod04_sec01_fig01.png",
+      "module_number": 4,
+      "title": "Netplan configuration and verification workflow",
+      "keywords": [
+        "Netplan",
+        "/etc/netplan/01-netcfg.yaml",
+        "renderer networkd",
+        "enp0s3",
+        "dhcp4 false",
+        "192.168.1.100/24",
+        "default route",
+        "192.168.1.1",
+        "systemd-networkd",
+        "ip addr show"
+      ],
+      "transcript": "The diagram's generic example configuration file is /etc/netplan/01-netcfg.yaml. The YAML example sets network version 2, renderer networkd, ethernet interface enp0s3, dhcp4 false, address 192.168.1.100/24, and a default route via 192.168.1.1. Netplan parses and renders the YAML into settings for the systemd-networkd backend renderer, which applies them to the kernel network stack. The example is verified with ip addr show and shows enp0s3 with 192.168.1.100/24. Important: these are generic diagram values, not the lab-specific labnet0 address used elsewhere in the course.",
+      "scope": "Generic instructional example; not the lab-specific interface or IP address."
+    },
+    {
+      "file": "m04_mod04_sec02_fig01.png",
+      "module_number": 4,
+      "title": "UFW host firewall and OpenSSH defense layers",
+      "keywords": [
+        "UFW",
+        "firewall",
+        "22/tcp",
+        "OpenSSH",
+        "PermitRootLogin no",
+        "root login",
+        "public key authentication",
+        "incoming traffic",
+        "port 22"
+      ],
+      "transcript": "The diagram shows two host-defense layers: Layer 1 is the UFW packet filter (host firewall); Layer 2 is the OpenSSH daemon. Incoming traffic comes from an untrusted network. Unexpected traffic is denied; ports 80/tcp and 443/tcp are shown as examples of unauthorized traffic. Port 22/tcp (OpenSSH) is permitted. Within OpenSSH, direct root login is rejected under PermitRootLogin no, while a non-root user named alex authenticates successfully with a public key. This figure describes layered controls; follow the course lab for the actual firewall configuration sequence.",
+      "scope": "Instructional security diagram; alex and example port traffic illustrate the layers."
+    },
+    {
+      "file": "m04_mod04_sec03_fig01.png",
+      "module_number": 4,
+      "title": "How visudo validates sudoers syntax",
+      "keywords": [
+        "visudo",
+        "sudo visudo",
+        "sudoers",
+        "syntax validation",
+        "/etc/sudoers.d/",
+        "atomic write",
+        "configuration error"
+      ],
+      "transcript": "The administrator runs sudo visudo. A parsing engine performs syntax validation. If a syntax error is detected, saving is prevented and the user is prompted to correct the problem. If valid syntax is confirmed, the edit is written atomically; the diagram labels the destination /etc/sudoers.d/. The key point is that visudo validates sudoers syntax and reduces the risk of saving an invalid privilege policy.",
+      "scope": "Instructional workflow diagram."
+    }
+  ]
+}

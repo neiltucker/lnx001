@@ -21,3 +21,12 @@ The isolated experiment in `nonllm-experiment.py` evaluates a model-free alterna
 The build source policy remains restricted to learner-facing SCORM HTML, Quick Reference Guide HTML, and pre/post instructor answer-key Q&A from the Trainer Preparation Guide. Learner-facing quiz questions improve query matching; quiz choices are not treated as facts unless the source explicitly identifies a correct answer or feedback. The candidate adds a standalone in-package demo page without replacing the primary tutor UI.
 
 Results and the candidate package are produced as a GitHub Actions artifact named `lnx001-ai-tutor-nonllm-algorithmic-v1`. No model files, WebAssembly, hosted inference, or runtime network requests are added. The original SCORM ZIP and Courseware Studio production assets remain unchanged.
+
+
+## Curriculum-linked, full-coverage no-LLM experiment (V2)
+
+The next isolated experiment is defined in `curriculum-enrichment.py`. It audits every SCORM archive entry, preserves all searchable learner-facing HTML blocks including inline code, ingests all 11 instructional figures through reviewed text transcriptions, deduplicates supplemental Quick Reference PDF/ZIP text, and records the approved 30 pre/post assessment questions plus 18 learner-facing quiz questions with typed choices, correctness labels, answers and rationales.
+
+The generated knowledge graph links course objectives, module objectives, module and lesson topics, searchable source records, and assessment items. Each searchable record carries source provenance, curriculum relationships, objective alignment and a bounded importance tier. The JavaScript query path uses a Lucene-inspired structured query plan, BM25-style lexical retrieval, exact technical-literal boosts, sparse curriculum-term matching, and Reciprocal Rank Fusion (RRF). Objective weighting is applied only after topical relevance, so globally important but unrelated concepts cannot displace exact technical evidence.
+
+Validation compares three configurations on the same fixed and held-out question set: the original tutor, the prior no-LLM prototype, and curriculum-linked V2. The build writes a per-file source coverage audit, a curriculum build summary, a per-design-objective measurement JSON, detailed per-question outputs and a separate V2 candidate SCORM package. Any absent lesson-level objectives are reported as absent in the source rather than invented. Runtime still contains no LLM, neural embedding model, WebAssembly, or network dependency. Production and the original source SCORM are untouched.
