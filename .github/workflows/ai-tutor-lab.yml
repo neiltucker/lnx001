@@ -5,7 +5,12 @@ on:
     branches:
       - 'ai-tutor-lab/**'
     paths:
-      - 'ai-tutor-lab/**'
+      - 'ai-tutor-lab/build_experiment.py'
+      - 'ai-tutor-lab/runtime-test.cjs'
+      - 'ai-tutor-lab/local-model-test.cjs'
+      - 'ai-tutor-lab/local-model-rag.js'
+      - 'ai-tutor-lab/smollm2-prepare.py'
+      - 'ai-tutor-lab/smollm2-test.cjs'
       - '.github/workflows/ai-tutor-lab.yml'
       - 'LNX-001_EN_SCORM2004.zip'
       - 'LNX-001_EN_TrainerPreparationGuide.txt'
@@ -17,7 +22,7 @@ permissions:
 jobs:
   full-course-knowledge-experiment:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out experiment branch
         uses: actions/checkout@v4
@@ -29,26 +34,38 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Cache pinned local model assets
+      - name: Cache pinned Gab model assets
         uses: actions/cache@v4
         with:
           path: ai-tutor-lab/model-cache
           key: gab-100m-q8-339be056d94f5615e7764f2ce3c8e67667dcabbb
-      - name: Build separate candidate SCORM package
+      - name: Cache SmolLM2 model and pure-JavaScript runtime
+        uses: actions/cache@v4
+        with:
+          path: ai-tutor-lab/smollm2-cache
+          key: smollm2-135m-q4km-llama3pure-03d2b7d-v1
+      - name: Build separate full-course knowledge candidate
         run: python ai-tutor-lab/build_experiment.py
-      - name: Run baseline versus candidate runtime tests
+      - name: Run baseline versus candidate retrieval tests
         run: node ai-tutor-lab/runtime-test.cjs
-      - name: Test local JavaScript model with course retrieval
+      - name: Test Gab 100M Q8 pure-JS baseline
         run: node ai-tutor-lab/local-model-test.cjs
-      - name: Upload original, candidate, and reports
+      - name: Prepare SmolLM2-135M-Instruct candidate package
+        run: python ai-tutor-lab/smollm2-prepare.py
+      - name: Test SmolLM2-135M-Instruct with pure-JavaScript inference
+        run: node ai-tutor-lab/smollm2-test.cjs
+      - name: Upload original, candidate packages, and reports
         uses: actions/upload-artifact@v4
         with:
-          name: lnx001-ai-tutor-local-js-generation-v1
+          name: lnx001-ai-tutor-smollm2-pure-js-v1
           path: |
             LNX-001_EN_SCORM2004.zip
             LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V6-LOCAL-LLM.zip
+            LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V8-SMOLLM2.zip
             ai-tutor-lab/experiment-summary.json
             ai-tutor-lab/runtime-comparison.json
             ai-tutor-lab/EXPERIMENT_REPORT.md
             ai-tutor-lab/local-model-results.json
+            ai-tutor-lab/smollm2-manifest.json
+            ai-tutor-lab/smollm2-results.json
           if-no-files-found: error
