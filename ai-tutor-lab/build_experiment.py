@@ -108,7 +108,7 @@ def parse_bundle(js):
     return json.loads(js[eq+1:semi if semi>eq else None].strip())
 def assessment_records(guide):
     # Standardize typography in this text export before locating assessment answer-key sections.
-    guide=guide.replace(chr(160)," ").replace("—","-").replace("–","-").replace("−","-")
+    guide=guide.replace(chr(160)," ").replace("—","-").replace("–","-").replace("−","-").replace(chr(65533),"-")
     a=re.search("Pre-Assessment +- +Instructor Answer Key",guide,re.I)
     b=re.search("Post-Assessment +- +Student Handout",guide,re.I)
     c=re.search("Post-Assessment +- +Instructor Answer Key",guide,re.I)
