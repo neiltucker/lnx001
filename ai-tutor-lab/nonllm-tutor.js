@@ -234,6 +234,7 @@
     const wantsSudoCommandPaths = /\bsecadmin\b/i.test(qnorm) && /\bcommand paths?\b/i.test(qnorm);
     const wantsGrepTail = /\bcase[ -]insensitive\b/i.test(qnorm) && /\b(?:syslog|log|logs)\b/i.test(qnorm) && /\blast\s+\d+\s+(?:matches|lines|results|entries)\b/i.test(qnorm);
     const wantsPersistentMount = /\buuid\b/i.test(qnorm) && /\bext4\b/i.test(qnorm) && /\b(?:fstab|mount(?:ing)?|persistent)\b/i.test(qnorm);
+    const wantsFstabFields = /\b(?:six|6)\s+(?:whitespace[- ]separated\s+)?fields?\b/i.test(qnorm) && /\bfstab\b/i.test(qnorm);
     const wantsNetplanPath = /\bnetplan\b/i.test(qnorm) && /\blabnet0\b/i.test(qnorm) && /\b(?:file|path|configured)\b/i.test(qnorm);
 
     function findEvidence(test) {
@@ -245,7 +246,19 @@
 
     let response;
     let evidenceRecord = best;
-    if (wantsSudoCommandPaths) {
+    if (wantsFstabFields) {
+      // Prefer the structured six-field definition over a longer lab procedure that happens
+      // to mention /etc/fstab. Assessments contribute question forms; the course index
+      // remains the source of facts used to assemble the response.
+      evidenceRecord = findEvidence(raw =>
+        /Device Specifier[\s\S]*Mount Point[\s\S]*Filesystem Type[\s\S]*Mount Options[\s\S]*Dump Flag[\s\S]*Fsck Pass/i.test(raw)
+      );
+      const fieldSource = String(evidenceRecord.direct_answer || "");
+      const expectedFields = ["Device Specifier", "Mount Point", "Filesystem Type", "Mount Options", "Dump Flag", "Fsck Pass"];
+      if (expectedFields.every(field => fieldSource.toLowerCase().includes(field.toLowerCase()))) {
+        response = "An /etc/fstab entry has six ordered fields: Device Specifier (the device path or UUID), Mount Point (target directory), Filesystem Type (for example, ext4), Mount Options (for example, defaults), Dump Flag (0 disables the legacy dump backup), and Fsck Pass (filesystem-check order: 1 for the root filesystem, 2 for other filesystems, or 0 to skip checking).";
+      }
+    } else if (wantsSudoCommandPaths) {
       evidenceRecord = findEvidence(raw => /\/usr\/sbin\/ufw\s+status\*/i.test(raw) && /\/usr\/bin\/ss\b/i.test(raw));
       const ufwPath = evidenceRecord.direct_answer.match(/\/usr\/sbin\/ufw\s+status\*/i);
       const ssPath = evidenceRecord.direct_answer.match(/\/usr\/bin\/ss\b/i);
@@ -335,7 +348,12 @@
 
     response = String(response || "").replace(/\s+/g, " ").trim();
     if (response.length > 1400) response = response.slice(0, 1397).replace(/\s+\S*$/, "") + "...";
-    const label = [evidenceRecord.module_title, evidenceRecord.lesson_title, evidenceRecord.section_title || evidenceRecord.title, evidenceRecord.citation].filter(Boolean).join(" — ");
+    // Prefer the canonical citation when available; concatenating every title field
+    // plus the citation repeated the same lesson multiple times.
+    const citation = String(evidenceRecord.citation || "").replace(/\s+/g, " ").trim();
+    const fallbackParts = [...new Set([evidenceRecord.module_title, evidenceRecord.lesson_title, evidenceRecord.section_title || evidenceRecord.title]
+      .map(value => String(value || "").replace(/\s+/g, " ").trim()).filter(Boolean))];
+    const label = citation || fallbackParts.join(" — ");
     const sources = label ? [label] : [];
     return {
       category: "IN_COURSE", answer: response, intent, score: top.score,

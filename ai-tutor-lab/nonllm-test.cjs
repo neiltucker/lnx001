@@ -21,7 +21,7 @@ const tests = [
   {id:'course-netplan-dropin',q:'What path does the lab use for its Netplan static IP configuration file for labnet0?',all:[/90-virtual-lab\.yaml/i,/labnet0/i]},
   {id:'course-sudo-allowed-commands',q:'Which two command paths are allowed by the secadmin sudo drop-in?',all:[/\/usr\/sbin\/ufw status/i,/\/usr\/bin\/ss/i]},
   {id:'course-verify-lab-address',q:'Which command verifies the configured address on the labnet0 dummy interface?',all:[/ip addr show labnet0/i,/192\.168\.200\.10\/24/i]},
-  {id:'course-fstab-fields',q:'What six fields go into an /etc/fstab entry for a UUID-based ext4 mount?',all:[/UUID/i,/Mount Point/i,/Filesystem Type/i,/Mount Options/i]},
+  {id:'course-fstab-fields',q:'What six fields go into an /etc/fstab entry for a UUID-based ext4 mount?',all:[/UUID/i,/Mount Point/i,/Filesystem Type/i,/Mount Options/i,/Dump Flag/i,/Fsck Pass/i]},
   {id:'course-yaml-troubleshooting',q:'How should I fix a YAML parsing error in the lab Netplan configuration?',all:[/tab/i,/spaces/i,/90-virtual-lab\.yaml/i]},
   {id:'course-ssh-root-config',q:'In which exact drop-in file does the lab set PermitRootLogin no?',all:[/PermitRootLogin no/i,/99-hardening\.conf/i]},
   {id:'quiz-m04-network-interfaces',group:'learner-quiz-answer',q:'Which modern command displays all network interfaces, their assigned IP addresses, and their current link state on Ubuntu 24?',any:[/ip addr show/i]},
