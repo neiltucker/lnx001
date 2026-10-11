@@ -17,13 +17,13 @@ function status(s){$('status').textContent=s}
 async function load(){if(engine)return;$('load').disabled=true;try{
 status('Loading tokenizer and manifest…');const [mr,tr,wr]=await Promise.all([fetch('./local-model/model-q8.json'),fetch('./local-model/tokenizer.json'),fetch('./local-model/model-q8.bin')]);
 if(!mr.ok||!tr.ok||!wr.ok)throw new Error('Could not read all bundled model files from this SCORM location.');
-const manifest=await mr.json();tokenizer=new GabTokenizer(await tr.json());status('Loading local weights…');engine=await GabInferenceEngine.create({manifest,weightsBuffer:await wr.arrayBuffer(),tokenizer,maxContext:768});
+const manifest=await mr.json();tokenizer=new GabTokenizer(await tr.json());status('Loading local weights…');engine=await GabInferenceEngine.create({manifest,weightsBuffer:await wr.arrayBuffer(),tokenizer,maxContext:1024});
 $('ask').disabled=false;status('Ready — local inference initialized')
 }catch(e){status('Model failed to load: '+String(e.message||e));$('load').disabled=false;throw e}}
 async function ask(){if(!engine||busy)return;const question=$('question').value.trim();if(!question)return;busy=true;$('ask').disabled=true;$('answer').textContent='Searching course content…';
 try{const concepts=(window.__CS_AI_TUTOR_DATA__||{}).concepts||[],ranked=CSLocalTutorRag.rank(question,concepts,{topK:3});
 $('sources').innerHTML=ranked.map((r,i)=>'<div class="source"><strong>['+(i+1)+'] '+String(r.concept.title||'Untitled')+'</strong><br><span class="muted">'+String(r.concept.citation||r.concept.lesson_title||'')+'</span><br>'+String(r.concept.direct_answer||'').slice(0,360)+'</div>').join('');
-const prompt=CSLocalTutorRag.buildPrompt(question,ranked,[]);if(tokenizer.encode(prompt).length>700)throw new Error('Evidence prompt exceeds the context budget.');
+const prompt=CSLocalTutorRag.buildPrompt(question,ranked,[]);if(tokenizer.encode(prompt).length>960)throw new Error('Evidence prompt exceeds the context budget.');
 $('answer').textContent='Generating locally…';status('Generating answer locally…');let answer='';
 for await(const item of engine.generate([{role:'user',text:prompt}],{maxNewTokens:80,temperature:0.15,topK:20,thinking:false})){if(item.kind==='response'){answer+=item.token.text;$('answer').textContent=answer}}
 status('Answer ready — generated on this device')

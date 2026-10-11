@@ -17,7 +17,7 @@ async function main(){
  const vocab=JSON.parse(fs.readFileSync(path.join(cache,'tokenizer.json'),'utf8'));
  const tokenizer=new global.GabTokenizer(vocab),wb=fs.readFileSync(path.join(cache,'model-q8.bin'));
  const weightsBuffer=wb.buffer.slice(wb.byteOffset,wb.byteOffset+wb.byteLength),contextLimit=manifest.architecture.max_position_embeddings||2048;
- const t0=performance.now(),engine=await global.GabInferenceEngine.create({manifest,weightsBuffer,tokenizer,maxContext:768}),loadMs=Math.round(performance.now()-t0);
+ const t0=performance.now(),engine=await global.GabInferenceEngine.create({manifest,weightsBuffer,tokenizer,maxContext:1024}),loadMs=Math.round(performance.now()-t0);
  const bundle=loadBundle(),concepts=bundle.concepts;
  if(!Array.isArray(concepts)||concepts.length<300)throw new Error('Candidate course knowledge incomplete: '+(concepts||[]).length);
  const cases=[
@@ -28,7 +28,7 @@ async function main(){
  const results=[];
  for(const test of cases){
   const started=performance.now(),ranked=Rag.rank(test.question,concepts,{topK:3}),prompt=Rag.buildPrompt(test.question,ranked,[]),promptTokens=tokenizer.encode(prompt).length;
-  if(promptTokens>=768-64)throw new Error(test.id+' prompt too long: '+promptTokens);
+  if(promptTokens>=1024-64)throw new Error(test.id+' prompt too long: '+promptTokens);
   let response='';
   for await(const event of engine.generate([{role:'user',text:prompt}],{maxNewTokens:48,temperature:0,topK:1,thinking:false}))if(event.kind==='response')response+=event.token.text;
   response=response.replace(/<\|end\|>|<\|endoftext\|>/g,'').trim();
