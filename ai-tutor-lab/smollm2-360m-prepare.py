@@ -205,7 +205,7 @@ function bpeEncodeSmolLM2(text) {
     # In this benchmark maxTokens is the total context size in the upstream engine.
     # Bound new output to 48 tokens so answer checks have a consistent latency ceiling.
     patched = patched.replace(old, "var effectiveMaxTokens = Math.min(maxTokens, numPromptTokens + 48)", 1)
-    engine_patched_path = CACHE / "llama3pure-smollm2-360m.js"
+    engine_patched_path = CACHE / "llama3pure-smollm2.js"
     engine_patched_path.write_text(patched, encoding="utf-8")
 
     engine_license = CACHE / "LICENSE-llama3pure.txt"
