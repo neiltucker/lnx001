@@ -13,6 +13,10 @@ on:
       - 'ai-tutor-lab/smollm2-test.cjs'
       - 'ai-tutor-lab/smollm2-360m-prepare.py'
       - 'ai-tutor-lab/smollm2-360m-test.cjs'
+      - 'ai-tutor-lab/nonllm-experiment.py'
+      - 'ai-tutor-lab/nonllm-tutor.js'
+      - 'ai-tutor-lab/nonllm-test.cjs'
+      - 'ai-tutor-lab/nonllm-demo.html'
       - '.github/workflows/ai-tutor-lab.yml'
       - 'LNX-001_EN_SCORM2004.zip'
       - 'LNX-001_EN_TrainerPreparationGuide.txt'
@@ -81,4 +85,35 @@ jobs:
             ai-tutor-lab/smollm2-results.json
             ai-tutor-lab/smollm2-360m-manifest.json
             ai-tutor-lab/smollm2-360m-results.json
+          if-no-files-found: error
+
+  algorithmic-no-llm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out isolated experiment branch
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build expanded course index and model-free SCORM candidate
+        run: python ai-tutor-lab/nonllm-experiment.py
+      - name: Run baseline-versus-no-LLM retrieval and answer tests
+        run: node ai-tutor-lab/nonllm-test.cjs
+      - name: Upload candidate SCORM and experiment reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lnx001-ai-tutor-nonllm-algorithmic-v1
+          path: |
+            LNX-001_EN_SCORM2004.zip
+            LNX-001_EN_SCORM2004_AI-TUTOR-LAB-NONLLM-V1.zip
+            ai-tutor-lab/nonllm-index.json
+            ai-tutor-lab/nonllm-build-summary.json
+            ai-tutor-lab/nonllm-results.json
+            ai-tutor-lab/NONLLM_EXPERIMENT_REPORT.md
           if-no-files-found: error
