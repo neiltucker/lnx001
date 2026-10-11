@@ -1,9 +1,9 @@
-# LNX-001 AI Tutor Lab — Version 3
+# LNX-001 AI Tutor Lab — Version 4
 
-This lab is isolated to the `ai-tutor-lab/full-course-knowledge-v1` branch in this repository. No Courseware Studio files are changed; the original SCORM ZIP is never overwritten.
+This lab is isolated to the `ai-tutor-lab/full-course-knowledge-v1` branch. No Courseware Studio files are changed, and the original SCORM ZIP is never overwritten.
 
-Version 1 tested adding the complete learner-facing course HTML, Quick Reference Guide HTML, and only the pre/post instructor answer-key Q&A from the Trainer Preparation Guide. Version 2 improved indexing by prioritizing exact paths, IP addresses, identifiers, and inline code, and by giving generic procedure passages more descriptive titles.
+V1 tested adding the full learner-facing SCORM HTML, the Quick Reference Guide HTML, and only pre/post instructor answer-key Q&A from the Trainer Preparation Guide. V2 improved build-time metadata, and V3 introduced a lab-only IDF-weighted query-coverage penalty to reduce overly generic matches.
 
-Version 3 keeps those knowledge-source rules and adds one experimental change to the candidate's embedded JavaScript only: an IDF-weighted query-coverage penalty intended to discourage answers that score highly on general words but omit a distinctive query term. The original package's tutor.js is the baseline; only the candidate receives this ranking patch. No hosted inference, WebAssembly, external request, or new runtime dependency is introduced.
+V4 refines that experiment: the coverage penalty is less aggressive to preserve paraphrased questions, and a verification-command anchor is attached only to passages that actually contain verification/inspection wording. The candidate still has no hosted inference, network calls, WebAssembly, or new runtime dependency.
 
-The workflow compares baseline and candidate against fixed Linux course questions, publishes the new SCORM package and reports as an artifact, and does not commit generated ZIPs/reports. Review the per-question answers and any regressions before importing this candidate into a separate LMS test course.
+GitHub Actions compares the original package against a separate V4 candidate and uploads the candidate ZIP plus per-query answer report as an artifact. Generated outputs are not committed to the repository automatically.

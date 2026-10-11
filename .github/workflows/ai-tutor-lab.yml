@@ -36,10 +36,10 @@ jobs:
       - name: Upload original, candidate, and reports
         uses: actions/upload-artifact@v4
         with:
-          name: lnx001-ai-tutor-full-course-knowledge-v3
+          name: lnx001-ai-tutor-full-course-knowledge-v4
           path: |
             LNX-001_EN_SCORM2004.zip
-            LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V3.zip
+            LNX-001_EN_SCORM2004_AI-TUTOR-LAB-V4.zip
             ai-tutor-lab/experiment-summary.json
             ai-tutor-lab/runtime-comparison.json
             ai-tutor-lab/EXPERIMENT_REPORT.md
