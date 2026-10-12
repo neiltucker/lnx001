@@ -113,32 +113,52 @@ function main(){
     out_of_scope_tests:results.filter(x=>x.outside).length,group_summary:groupSummary,
     intent_counts:results.reduce((o,x)=>{const k=x.candidate_intent||'error';o[k]=(o[k]||0)+1;return o;},{}),results};
   fs.writeFileSync(path.join(ROOT,'ai-tutor-lab','nonllm-results.json'),JSON.stringify(result,null,2));
-  const summary=JSON.parse(fs.readFileSync(path.join(ROOT,'ai-tutor-lab','nonllm-build-summary.json'),'utf8'));
+  const curriculumBuild=JSON.parse(fs.readFileSync(path.join(ROOT,'ai-tutor-lab','curriculum-build-summary.json'),'utf8'));
+  const buildCoverage=curriculumBuild.coverage;
+  const curriculumCounts=buildCoverage.curriculum_counts;
+  const assessmentCounts=buildCoverage.assessment_counts;
+  const sourceBlockCoverage=buildCoverage.course_html_block_coverage;
+  const imageCoverage=buildCoverage.image_transcriptions;
+  const qrgPdfIndexing=(curriculumBuild.pdf_audit||{})['Day-01-QuickReference.pdf']?.indexing||{};
   const md=[
-    '# LNX-001 AI Tutor Lab — algorithmic no-LLM experiment','','## Configuration','',
-    '- No LLM or embedding model; no model weight files.',
-    '- Pure JavaScript runtime: BM25-style weighted lexical ranking, exact technical-term boosts, domain aliases, quiz/assessment question anchors, sentence selection, and intent-based response templates.',
-    '- Knowledge sources: learner-facing SCORM HTML, Quick Reference Guide HTML, and only pre/post instructor answer-key Q&A from the Trainer Preparation Guide.',
-    '- Quiz distractors are not treated as facts. A quiz answer is used only when an explicit correct-answer or feedback marker is visible in learner-facing content.',
-    '- A separate model-free demo page is included. The original tutor UI is not replaced in this experiment.',
-    '- Original SCORM ZIP hash verified unchanged.','',
-    '## Knowledge build','','| Metric | Result |','|---|---:|',
-    '| Base concepts | '+summary.base_concept_count+' |','| Candidate concepts | '+summary.candidate_concept_count+' |',
-    '| Pre-assessment answer-key Q&A | '+summary.assessment_qas.pre+' |','| Post-assessment answer-key Q&A | '+summary.assessment_qas.post+' |',
-    '| Existing concepts enriched from assessments | '+summary.existing_concepts_enriched_from_assessments+' |',
-    '| Quick Reference concepts added | '+summary.quick_reference_concepts_added+' |','| Course HTML concepts added | '+summary.course_html_concepts_added+' |',
-    '| End-of-module quiz pages detected | '+summary.module_quiz_sources_detected+' |','| Quiz questions detected | '+summary.module_quiz_questions_detected+' |',
-    '| Quiz questions with visible answer/feedback | '+summary.module_quiz_questions_with_explicit_answers+' |',
-    '| Quiz questions linked as query anchors | '+summary.module_quiz_questions_linked_as_query_anchors+' |',
-    '| Derived question-stem rules | '+summary.question_stem_rules+' |','| Additional model bytes | 0 |','',
+    '# LNX-001 AI Tutor Lab — curriculum-linked non-LLM experiment','','## Runtime design','',
+    '- No LLM, neural embedding model, model weights, WebAssembly, hosted service, or runtime network calls.',
+    '- Pure JavaScript query pipeline: safe Lucene-inspired structured query plans, BM25-style lexical ranking, exact technical literal boosts, controlled aliases, sparse objective/topic vectors, importance metadata, and Reciprocal Rank Fusion (RRF).',
+    '- Answer construction uses course-grounded evidence, intent classification, sentence selection, and deterministic response templates.',
+    '- Knowledge combines the full learner-facing SCORM content, reviewed transcriptions for instructional images, learner Quick Reference material, the existing tutor corpus, the approved pre/post assessment answer keys, and learner-visible module quiz items.',
+    '- Every SCORM archive entry has an explicit disposition. Trainer-only Module Q&A Reference and other instructor-only guide sections remain excluded under the established source policy; approved pre/post answer-key material is included.',
+    '- Original SCORM ZIP hash verified unchanged. The tutor UI in the source package is not replaced; the candidate contains a separate experimental demo page.','',
+    '## Knowledge coverage and curriculum structure','','| Metric | Result |','|---|---:|',
+    '| Original tutor knowledge records | '+curriculumBuild.initial_tutor_record_count+' |',
+    '| Prior no-LLM searchable records | '+curriculumBuild.base_concepts_before_enrichment+' |',
+    '| Curriculum V2 searchable records | '+curriculumBuild.candidate_searchable_records+' |',
+    '| SCORM archive entries with explicit disposition | '+buildCoverage.scorm_inventory_counts.entries_with_explicit_disposition+'/'+buildCoverage.scorm_inventory_counts.entries_in_package+' |',
+    '| Learner-facing HTML visible characters audited | '+sourceBlockCoverage.visible_chars_including_quiz+' |',
+    '| Learner-facing HTML blocks accounted for | '+sourceBlockCoverage.eligible_text_blocks+' |',
+    '| New source-block records / blocks already covered | '+sourceBlockCoverage.blocks_added_as_records+' / '+sourceBlockCoverage.blocks_already_covered+' |',
+    '| Structural headings represented as topic/metadata | '+sourceBlockCoverage.structural_headings_mapped_to_topics_or_metadata+' |',
+    '| Instructional image transcriptions | '+imageCoverage.added+'/'+imageCoverage.expected+' |',
+    '| Quick Reference PDF unique records added | '+(qrgPdfIndexing.unique_records_added||0)+' |',
+    '| Course objectives | '+curriculumBuild.course_objective_count+' |',
+    '| Module objectives | '+curriculumBuild.module_objective_count+' |',
+    '| Module topics | '+curriculumBuild.module_topic_count+' |',
+    '| Lesson topics | '+curriculumBuild.lesson_topic_count+' |',
+    '| Curriculum graph nodes / edges | '+curriculumCounts.graph_nodes+' / '+curriculumCounts.graph_edges+' |',
+    '| Searchable records linked to curriculum | '+buildCoverage.record_link_counts.records_linked_to_curriculum+'/'+curriculumBuild.candidate_searchable_records+' ('+(100*buildCoverage.record_link_counts.curriculum_link_rate).toFixed(2)+'%) |',
+    '| Pre-assessment questions | '+assessmentCounts.pre_assessment_questions+' |',
+    '| Post-assessment questions | '+assessmentCounts.post_assessment_questions+' |',
+    '| End-of-module quiz questions | '+assessmentCounts.module_quiz_questions+' |',
+    '| Structured assessment/quiz items linked to objectives or topics | '+assessmentCounts.items_linked_to_objectives_or_topics+'/'+assessmentCounts.total_items+' |',
+    '| Correctness-labeled choices | '+assessmentCounts.choices_with_correctness_labels+'/'+assessmentCounts.choices_total+' |',
+    '| Candidate SCORM package | '+curriculumBuild.candidate_v2_bytes+' bytes ('+(curriculumBuild.candidate_v2_bytes-curriculumBuild.source_package_bytes)+' bytes larger than source) |',
+    '| Additional model bytes | 0 |','',
     '## Three-way retrieval-and-answer benchmark','',
-    'Original tutor: **'+baselinePass+'/'+results.length+'**; prior no-LLM engine: **'+v1Pass+'/'+results.length+'**; curriculum candidate: **'+candidatePass+'/'+results.length+'**.','',
-    'Improvements vs original: **'+result.improved_vs_original+'**; regressions vs original: **'+result.regressed_vs_original+'**; improvements vs prior no-LLM: **'+result.improved_vs_v1+'**; regressions vs prior no-LLM: **'+result.regressed_vs_v1+'**.','',
-    '### Result by test group','',
-    '| Group | Questions | Baseline pass | Candidate pass |','|---|---:|---:|---:|',
-    ...Object.entries(groupSummary).map(([name,g])=>'| '+name+' | '+g.count+' | '+g.baseline_pass+' | '+g.candidate_pass+' |'),
+    'Original tutor: **'+baselinePass+'/'+results.length+'**; prior no-LLM engine: **'+v1Pass+'/'+results.length+'**; curriculum-aware candidate: **'+candidatePass+'/'+results.length+'**.','',
+    'Improvements versus original: **'+result.improved_vs_original+'**; regressions versus original: **'+result.regressed_vs_original+'**; improvements versus prior no-LLM: **'+result.improved_vs_v1+'**; regressions versus prior no-LLM: **'+result.regressed_vs_v1+'**.','',
+    '### Results by question group','','| Group | Questions | Original passed | Prior no-LLM passed | Curriculum V2 passed |','|---|---:|---:|---:|---:|',
+    ...Object.entries(groupSummary).map(([name,g])=>'| '+name+' | '+g.count+' | '+g.baseline_pass+' | '+g.v1_pass+' | '+g.candidate_pass+' |'),
     '',
-    '| Test | Group | Original | Prior no-LLM | Curriculum v2 | Change vs v1 | Intent | Top concept |','|---|---|---|---|---|---|---|---|'
+    '| Test | Group | Original | Prior no-LLM | Curriculum V2 | Change vs prior | Intent | Top retrieved record |','|---|---|---|---|---|---|---|---|'
   ];
   for(const x of results){
     const title=x.candidate_ranked&&x.candidate_ranked[0]&&x.candidate_ranked[0].title||'';
