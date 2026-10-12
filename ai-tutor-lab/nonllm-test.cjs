@@ -113,6 +113,7 @@ function main(){
     out_of_scope_tests:results.filter(x=>x.outside).length,group_summary:groupSummary,
     intent_counts:results.reduce((o,x)=>{const k=x.candidate_intent||'error';o[k]=(o[k]||0)+1;return o;},{}),results};
   fs.writeFileSync(path.join(ROOT,'ai-tutor-lab','nonllm-results.json'),JSON.stringify(result,null,2));
+  const stageOneSummary=JSON.parse(fs.readFileSync(path.join(ROOT,'ai-tutor-lab','nonllm-build-summary.json'),'utf8'));
   const curriculumBuild=JSON.parse(fs.readFileSync(path.join(ROOT,'ai-tutor-lab','curriculum-build-summary.json'),'utf8'));
   const buildCoverage=curriculumBuild.coverage;
   const curriculumCounts=buildCoverage.curriculum_counts;
@@ -129,7 +130,7 @@ function main(){
     '- Every SCORM archive entry has an explicit disposition. Trainer-only Module Q&A Reference and other instructor-only guide sections remain excluded under the established source policy; approved pre/post answer-key material is included.',
     '- Original SCORM ZIP hash verified unchanged. The tutor UI in the source package is not replaced; the candidate contains a separate experimental demo page.','',
     '## Knowledge coverage and curriculum structure','','| Metric | Result |','|---|---:|',
-    '| Original tutor knowledge records | '+curriculumBuild.initial_tutor_record_count+' |',
+    '| Original tutor knowledge records | '+stageOneSummary.base_concept_count+' |',
     '| Prior no-LLM searchable records | '+curriculumBuild.base_concepts_before_enrichment+' |',
     '| Curriculum V2 searchable records | '+curriculumBuild.candidate_searchable_records+' |',
     '| SCORM archive entries with explicit disposition | '+buildCoverage.scorm_inventory_counts.entries_with_explicit_disposition+'/'+buildCoverage.scorm_inventory_counts.entries_in_package+' |',
