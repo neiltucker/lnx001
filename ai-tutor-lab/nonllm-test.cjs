@@ -114,40 +114,20 @@ function main(){
     intent_counts:results.reduce((o,x)=>{const k=x.candidate_intent||'error';o[k]=(o[k]||0)+1;return o;},{}),results};
   fs.writeFileSync(path.join(ROOT,'ai-tutor-lab','nonllm-results.json'),JSON.stringify(result,null,2));
   const summary=JSON.parse(fs.readFileSync(path.join(ROOT,'ai-tutor-lab','nonllm-build-summary.json'),'utf8'));
-  const curriculumBuild=JSON.parse(fs.readFileSync(path.join(ROOT,'ai-tutor-lab','curriculum-build-summary.json'),'utf8'));
-  const buildCoverage=curriculumBuild.coverage;
-  const curriculumCounts=buildCoverage.curriculum_counts;
-  const assessmentCounts=buildCoverage.assessment_counts;
-  const sourceBlockCoverage=buildCoverage.course_html_block_coverage;
-  const qrgPdfIndexing=(curriculumBuild.pdf_audit||{})['Day-01-QuickReference.pdf']?.indexing||{};
   const md=[
     '# LNX-001 AI Tutor Lab — algorithmic no-LLM experiment','','## Configuration','',
     '- No LLM or embedding model; no model weight files.',
     '- Pure JavaScript runtime: BM25-style weighted lexical ranking, exact technical-term boosts, domain aliases, quiz/assessment question anchors, sentence selection, and intent-based response templates.',
-    '- Knowledge sources: learner-facing S    '## Knowledge build','','| Metric | Result |','|---|---:|',
-    '| Prior no-LLM V1 searchable records | '+curriculumBuild.base_concepts_before_enrichment+' |',
-    '| Curriculum V2 searchable records | '+curriculumBuild.candidate_searchable_records+' |',
-    '| SCORM inventory entries with explicit disposition | '+buildCoverage.scorm_inventory_counts.entries_with_explicit_disposition+'/'+buildCoverage.scorm_inventory_counts.entries_in_package+' |',
-    '| Course HTML visible characters audited | '+sourceBlockCoverage.visible_chars_including_quiz+' |',
-    '| Eligible learner-facing HTML blocks | '+sourceBlockCoverage.eligible_text_blocks+' |',
-    '| New searchable source-block records | '+sourceBlockCoverage.blocks_added_as_records+' |',
-    '| Repeated or already-covered learner-facing blocks | '+sourceBlockCoverage.blocks_already_covered+' |',
-    '| Instructional image transcriptions | '+curriculumBuild.image_transcription_count+' / '+buildCoverage.image_transcriptions.expected+' |',
-    '| Quick Reference PDF unique records added | '+(qrgPdfIndexing.unique_records_added||0)+' |',
-    '| Course objectives | '+curriculumBuild.course_objective_count+' |',
-    '| Module objectives | '+curriculumBuild.module_objective_count+' |',
-    '| Module topics | '+curriculumBuild.module_topic_count+' |',
-    '| Lesson topics | '+curriculumBuild.lesson_topic_count+' |',
-    '| Curriculum graph nodes / edges | '+curriculumCounts.graph_nodes+' / '+curriculumCounts.graph_edges+' |',
-    '| Records linked to curriculum | '+buildCoverage.record_link_counts.records_linked_to_curriculum+'/'+curriculumBuild.candidate_searchable_records+' ('+(100*buildCoverage.record_link_counts.curriculum_link_rate).toFixed(2)+'%) |',
-    '| Pre-assessment questions | '+assessmentCounts.pre_assessment_questions+' |',
-    '| Post-assessment questions | '+assessmentCounts.post_assessment_questions+' |',
-    '| End-of-module quiz questions | '+assessmentCounts.module_quiz_questions+' |',
-    '| Structured assessment/quiz items linked to objectives or topics | '+assessmentCounts.items_linked_to_objectives_or_topics+'/'+assessmentCounts.total_items+' |',
-    '| Correctness-labeled answer choices | '+assessmentCounts.choices_with_correctness_labels+'/'+assessmentCounts.choices_total+' |',
-    '| Candidate compressed SCORM package | '+curriculumBuild.candidate_v2_bytes+' bytes ('+(curriculumBuild.candidate_v2_bytes-curriculumBuild.source_package_bytes)+' bytes larger than original) |',
-    '| Additional model bytes | 0 |','',
-ed | '+summary.module_quiz_sources_detected+' |','| Quiz questions detected | '+summary.module_quiz_questions_detected+' |',
+    '- Knowledge sources: learner-facing SCORM HTML, Quick Reference Guide HTML, and only pre/post instructor answer-key Q&A from the Trainer Preparation Guide.',
+    '- Quiz distractors are not treated as facts. A quiz answer is used only when an explicit correct-answer or feedback marker is visible in learner-facing content.',
+    '- A separate model-free demo page is included. The original tutor UI is not replaced in this experiment.',
+    '- Original SCORM ZIP hash verified unchanged.','',
+    '## Knowledge build','','| Metric | Result |','|---|---:|',
+    '| Base concepts | '+summary.base_concept_count+' |','| Candidate concepts | '+summary.candidate_concept_count+' |',
+    '| Pre-assessment answer-key Q&A | '+summary.assessment_qas.pre+' |','| Post-assessment answer-key Q&A | '+summary.assessment_qas.post+' |',
+    '| Existing concepts enriched from assessments | '+summary.existing_concepts_enriched_from_assessments+' |',
+    '| Quick Reference concepts added | '+summary.quick_reference_concepts_added+' |','| Course HTML concepts added | '+summary.course_html_concepts_added+' |',
+    '| End-of-module quiz pages detected | '+summary.module_quiz_sources_detected+' |','| Quiz questions detected | '+summary.module_quiz_questions_detected+' |',
     '| Quiz questions with visible answer/feedback | '+summary.module_quiz_questions_with_explicit_answers+' |',
     '| Quiz questions linked as query anchors | '+summary.module_quiz_questions_linked_as_query_anchors+' |',
     '| Derived question-stem rules | '+summary.question_stem_rules+' |','| Additional model bytes | 0 |','',
