@@ -524,6 +524,32 @@ def attach_curriculum_links(concepts, course_objectives, module_objectives, modu
         if not course_obj_ids:
             scored_course = sorted(((similarity(base_text + " " + answer_text[:1000], x["statement"]), x) for x in course_objectives), key=lambda x: x[0], reverse=True)
             course_obj_ids = [x["id"] for sc, x in scored_course[:2] if sc >= 0.12]
+
+        # Explicit curriculum mapping for the Quick Reference process-control procedure.
+        # It is a supplemental PDF block without a module path, so literal procedure terms
+        # disambiguate it more reliably than generic heading similarity.
+        is_process_reference = (
+            str(c.get("knowledge_source_type") or "") == "quick_reference_pdf"
+            and re.search(r"\bTask\s*5\b", answer_text, re.I)
+            and re.search(r"\b(?:SIGTERM|kill\s+-15)\b", answer_text, re.I)
+            and re.search(r"\bunresponsive background process\b", answer_text, re.I)
+        )
+        if is_process_reference:
+            process_co = next((x for x in course_objectives
+                               if re.search(r"\bmonitor running processes\b", x["statement"], re.I)), None)
+            process_mo = next((x for x in module_objectives
+                               if x.get("module_number") == 3 and re.search(r"\bmanage process execution states using signals\b", x["statement"], re.I)), None)
+            process_mt = next((x for x in module_topics
+                               if x.get("module_number") == 3 and norm(x["title"]) == norm("Process Monitoring and Execution Control")), None)
+            process_lts = [x for x in lesson_topics if x.get("module_number") == 3
+                           and re.search(r"(?:Process Lifecycle, Identifiers, and States|Identifying and Terminating a Process)", x["title"], re.I)]
+            c["module_number"] = 3
+            c["module_title"] = MODULE_TITLES[3]
+            if process_co: course_obj_ids = list(dict.fromkeys(course_obj_ids + [process_co["id"]]))
+            if process_mo: module_obj_ids = list(dict.fromkeys(module_obj_ids + [process_mo["id"]]))
+            if process_mt: module_topic_ids = list(dict.fromkeys(module_topic_ids + [process_mt["id"]]))
+            lesson_topic_ids = list(dict.fromkeys(lesson_topic_ids + [x["id"] for x in process_lts]))
+
         c["course_objective_ids"] = course_obj_ids
         c["module_objective_ids"] = module_obj_ids
         c["module_topic_ids"] = module_topic_ids
@@ -558,6 +584,35 @@ def attach_curriculum_links(concepts, course_objectives, module_objectives, modu
                 c["assessment_item_ids"].append(item["id"])
                 c["importance_score"] = round(min(1.0, float(c["importance_score"]) + 0.025), 3)
                 if c["importance_score"] >= 0.76: c["importance_tier"] = "core"
+    # Propagate each assessment item's validated curriculum links to its searchable
+    # answer record(s). This keeps the searchable answer and the structured assessment
+    # entity aligned without replacing either representation.
+    for c in concepts:
+        if str(c.get("record_type") or c.get("knowledge_source_type") or "") != "assessment_answer":
+            continue
+        linked_items = [item for item in assessment_items
+                        if item.get("id") in (c.get("assessment_item_ids") or [])
+                        or c.get("id") in (item.get("related_record_ids") or [])]
+        if not linked_items:
+            continue
+        for key in ("course_objective_ids", "module_objective_ids", "module_topic_ids", "lesson_topic_ids"):
+            merged = list(c.get(key) or [])
+            for item in linked_items:
+                merged.extend(item.get(key) or [])
+            c[key] = list(dict.fromkeys(x for x in merged if x in node_by_id))
+        c["curriculum_node_ids"] = list(dict.fromkeys(
+            (c.get("course_objective_ids") or []) + (c.get("module_objective_ids") or [])
+            + (c.get("module_topic_ids") or []) + (c.get("lesson_topic_ids") or [])))
+        c["curriculum_search_text"] = " ".join(node_by_id[x]["title"] for x in c["curriculum_node_ids"] if x in node_by_id)
+        c["objective_alignment_score"] = round(min(1.0,
+            0.6 * bool(c.get("course_objective_ids")) + 0.4 * bool(c.get("module_objective_ids"))
+            + min(0.2, 0.05 * (len(c.get("lesson_topic_ids", [])) + len(c.get("module_topic_ids", [])))), 3)
+        if c["curriculum_node_ids"]:
+            score = float(c.get("importance_score", 0.6))
+            if c.get("course_objective_ids"): score += 0.12
+            if c.get("module_objective_ids"): score += 0.09
+            c["importance_score"] = round(min(1.0, max(float(c.get("importance_score", 0.0)), score)), 3)
+            c["importance_tier"] = "core" if c["importance_score"] >= 0.76 else ("supporting" if c["importance_score"] >= 0.61 else "reference")
     for item in assessment_items:
         for node_id in item.get("module_objective_ids", []) + item.get("course_objective_ids", []) + item.get("module_topic_ids", []) + item.get("lesson_topic_ids", []):
             if node_id in node_by_id:
@@ -758,9 +813,14 @@ def main():
         # PDFs are extracted on CI for audit; unique Quick Reference material is indexed, the trainer-guide
         # PDF is restricted to the approved pre/post answer-key records.
         def add_plaintext_source(source_name, text_content, source_kind, module=None):
-            count_new = count_dup = count_ui = 0
+            count_new = count_dup = count_ui = count_boilerplate = 0
             for i, para in enumerate(re.split(r"\n\s*\n|\f", text_content or "")):
                 para = re.sub(r"\s+", " ", para).strip()
+                # Exclude repeated document footer text: it is package/reference metadata,
+                # not instructional knowledge. Keep a measurable audit count for transparency.
+                if norm(para) in {"lnx 001 quick reference guide day 1 of 1", "lnx001 quick reference guide day 1 of 1"}:
+                    count_boilerplate += 1
+                    continue
                 technical_fragment = bool(re.fullmatch(r"(?:>{1,2}|\d>|-[A-Za-z0-9]+|/[A-Za-z0-9_./-]+|\w[+#.:-]*)", para))
                 if len(norm(para)) < 3 and not technical_fragment: continue
                 known = " || ".join(norm(str(c.get(k,""))) for c in concepts for k in ("title","section_title","lesson_title","direct_answer"))
@@ -772,7 +832,7 @@ def main():
                 elif status == "covered_by_existing_record": count_dup += 1
                 else: count_ui += 1
             return {"source": source_name, "text_chars_extracted": len(text_content or ""), "unique_records_added": count_new,
-                    "duplicate_blocks": count_dup, "other_excluded_blocks": count_ui}
+                    "duplicate_blocks": count_dup, "other_excluded_blocks": count_ui, "noninstructional_boilerplate_excluded": count_boilerplate}
 
         # Parse the Quick Reference PDF; its duplicate text is not added twice, unique text is preserved.
         pdf_audit = {}
