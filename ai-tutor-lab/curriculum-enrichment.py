@@ -604,9 +604,10 @@ def attach_curriculum_links(concepts, course_objectives, module_objectives, modu
             (c.get("course_objective_ids") or []) + (c.get("module_objective_ids") or [])
             + (c.get("module_topic_ids") or []) + (c.get("lesson_topic_ids") or [])))
         c["curriculum_search_text"] = " ".join(node_by_id[x]["title"] for x in c["curriculum_node_ids"] if x in node_by_id)
-        c["objective_alignment_score"] = round(min(1.0,
+        alignment_value = min(1.0,
             0.6 * bool(c.get("course_objective_ids")) + 0.4 * bool(c.get("module_objective_ids"))
-            + min(0.2, 0.05 * (len(c.get("lesson_topic_ids", [])) + len(c.get("module_topic_ids", [])))), 3)
+            + min(0.2, 0.05 * (len(c.get("lesson_topic_ids", [])) + len(c.get("module_topic_ids", [])))))
+        c["objective_alignment_score"] = round(alignment_value, 3)
         if c["curriculum_node_ids"]:
             score = float(c.get("importance_score", 0.6))
             if c.get("course_objective_ids"): score += 0.12
